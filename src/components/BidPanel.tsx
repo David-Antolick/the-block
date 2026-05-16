@@ -22,9 +22,12 @@ import {
   validateBid,
   type ValidationResult,
 } from '../lib/bidding';
+import { compPriceBand, smartPriceVerdict } from '../lib/comps';
+import { VEHICLES } from '../data/vehicles';
 import { formatCurrency } from '../lib/format';
 import { auctionStatus, type AuctionStatus } from '../lib/time';
-import { useBidsFor, usePlaceBid } from '../state/bid-context';
+import { useBids, useBidsFor, usePlaceBid } from '../state/bid-context';
+import SmartPriceBadge from './SmartPriceBadge';
 
 interface Props {
   vehicle: Vehicle;
@@ -56,6 +59,7 @@ function formatBidTimestamp(iso: string): string {
 
 export default function BidPanel({ vehicle }: Props) {
   const userBids = useBidsFor(vehicle.id);
+  const bidsByVehicle = useBids();
   const placeBid = usePlaceBid();
 
   const status = auctionStatus(vehicle.auction_start);
@@ -109,6 +113,14 @@ export default function BidPanel({ vehicle }: Props) {
 
   const sortedBids = useMemo(() => [...userBids].sort(compareBidsDesc), [userBids]);
 
+  // Same memoization shape as VehicleCard / CompPanel — keyed on the bid map
+  // so any bid commit (target or comp) reshapes the verdict in one tick.
+  const band = useMemo(
+    () => compPriceBand(vehicle, VEHICLES, bidsByVehicle),
+    [vehicle, bidsByVehicle],
+  );
+  const verdict = smartPriceVerdict(current, band);
+
   const disabledReason = !isActive
     ? status === 'upcoming'
       ? 'Bidding opens when this lot goes Active.'
@@ -133,9 +145,17 @@ export default function BidPanel({ vehicle }: Props) {
 
       <div>
         <p className="text-[11px] uppercase tracking-wider text-zinc-500">Current bid</p>
-        <p className="mt-0.5 text-3xl font-semibold tabular-nums text-zinc-900">
-          {formatCurrency(current)}
-        </p>
+        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <p className="text-3xl font-semibold tabular-nums text-zinc-900">
+            {formatCurrency(current)}
+          </p>
+          <SmartPriceBadge
+            verdict={verdict}
+            band={band}
+            size="md"
+            tooltipId={`smart-price-vdp-${vehicle.id}`}
+          />
+        </div>
         <p className="mt-1 text-xs">
           {floor === 'met' && <span className="text-emerald-700">Floor Met</span>}
           {floor === 'not_met' && <span className="text-zinc-600">Floor Not Yet Met</span>}

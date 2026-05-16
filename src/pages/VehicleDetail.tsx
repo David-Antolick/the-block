@@ -15,6 +15,7 @@ import SpecTable from '../components/SpecTable';
 import ConditionSection from '../components/ConditionSection';
 import DealershipCard from '../components/DealershipCard';
 import BidPanel from '../components/BidPanel';
+import CompPanel from '../components/CompPanel';
 
 export default function VehicleDetail() {
   const { id } = useParams<{ id: string }>();
@@ -49,6 +50,7 @@ export default function VehicleDetail() {
           <TitleBrandBanner status={vehicle.title_status} />
           <SpecTable vehicle={vehicle} />
           <ConditionSection vehicle={vehicle} />
+          <CompPanel vehicle={vehicle} />
           <DealershipCard vehicle={vehicle} />
         </div>
 

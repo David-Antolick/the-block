@@ -19,6 +19,8 @@ import {
   ALL_AUCTION_STATUSES,
   ALL_TITLE_STATUSES,
   DEFAULT_FILTER_STATE,
+  SCORED_VERDICTS,
+  VERDICT_LABEL,
   type FilterState,
 } from './filter-rail-state';
 
@@ -239,6 +241,23 @@ function RailBody({ value, onChange, facets, onResetAll }: RailBodyProps) {
             </span>
           </div>
         </label>
+      </FieldSection>
+
+      <FieldSection title="Smart Price">
+        <CheckboxGroup
+          options={SCORED_VERDICTS.map((v) => ({ value: v, label: VERDICT_LABEL[v] }))}
+          selected={value.smartPriceVerdicts}
+          onToggle={(v, checked) =>
+            onChange({
+              ...value,
+              smartPriceVerdicts: toggleIn(value.smartPriceVerdicts, v, checked),
+            })
+          }
+        />
+        <p className="mt-1 text-[11px] text-zinc-500">
+          Filters to lots whose current bid matches the selected verdict against three
+          nearest comps. Unscored lots (no priced comps) are hidden when this is on.
+        </p>
       </FieldSection>
 
       <FieldSection title="Auction status">

@@ -4,17 +4,29 @@
 // `formatCurrency()`; floor copy is "Floor Met" / "Floor Not Yet Met" only —
 // never the reserve number; auction-status pill via `auctionStatus()` labelled
 // "Upcoming" / "Active" / "Ended"; whole card is a `<Link>` to the VDP. The
-// `<SmartPriceSlot />` is a labelled placeholder filled in by Phase 7.
+// SmartPriceBadge bottom-right of the price block carries the Phase 7 verdict.
 
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import type { Vehicle } from '../types/vehicle';
 import { displayedCurrentBid, floorStatus } from '../lib/bidding';
+import type { CompPriceBand } from '../lib/comps';
+import { compPriceBand, smartPriceVerdict } from '../lib/comps';
+import { VEHICLES } from '../data/vehicles';
 import { formatCurrency, formatOdometer } from '../lib/format';
 import { auctionStatus, type AuctionStatus } from '../lib/time';
-import { useBidsFor } from '../state/bid-context';
+import { useBids, useBidsFor } from '../state/bid-context';
+import SmartPriceBadge from './SmartPriceBadge';
 
 interface Props {
   vehicle: Vehicle;
+  /** Comp band for this vehicle. When the Smart Price filter is active, the
+   *  Inventory page precomputes the full 200-lot map and threads it down so
+   *  the filter + grid share one pass. When the filter is off (the default),
+   *  no precompute happens and the card lazily computes its own — only ~50
+   *  cards render, so the work stays bounded. `null` = no comp signal;
+   *  `undefined` = "no precomputed value, fall back to internal compute." */
+  band?: CompPriceBand | null | undefined;
 }
 
 // Pill copy is OPENLANE's lifecycle vocabulary (D007). Per CLAUDE.md, "Closing"
@@ -30,20 +42,6 @@ const STATUS_PILL_CLASS: Record<AuctionStatus, string> = {
   active: 'bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200',
   ended: 'bg-zinc-200 text-zinc-600 ring-1 ring-inset ring-zinc-300',
 };
-
-// Phase 7 (Stretch A) fills this in with the real comp verdict. Leaving a
-// labelled, visually-obvious placeholder keeps the card's vertical rhythm
-// stable across the comps-merge and signals where the feature lands.
-function SmartPriceSlot() {
-  return (
-    <div
-      aria-label="Smart Price (coming soon)"
-      className="rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-2 py-1 text-[11px] uppercase tracking-wider text-zinc-500"
-    >
-      Smart Price · coming soon
-    </div>
-  );
-}
 
 function TitleBrandBadge({ status }: { status: Vehicle['title_status'] }) {
   if (status === 'clean') return null;
@@ -61,20 +59,31 @@ function TitleBrandBadge({ status }: { status: Vehicle['title_status'] }) {
   );
 }
 
-export default function VehicleCard({ vehicle }: Props) {
+export default function VehicleCard({ vehicle, band: providedBand }: Props) {
   const userBids = useBidsFor(vehicle.id);
+  const bidsByVehicle = useBids();
   const headline = displayedCurrentBid(vehicle, userBids);
   const status = auctionStatus(vehicle.auction_start);
   const floor = floorStatus(vehicle, userBids);
   const heroImage = vehicle.images[0];
   const heroAlt = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+  // When the page hasn't precomputed (filter off path), fall back to a
+  // per-card memo. The conditional inside the memo keeps the compute out of
+  // the hot path when the page *did* hand us a band.
+  const fallbackBand = useMemo(
+    () =>
+      providedBand !== undefined ? null : compPriceBand(vehicle, VEHICLES, bidsByVehicle),
+    [providedBand, vehicle, bidsByVehicle],
+  );
+  const band = providedBand !== undefined ? providedBand : fallbackBand;
+  const verdict = smartPriceVerdict(headline, band);
 
   return (
     <Link
       to={`/vehicle/${vehicle.id}`}
-      className="group flex h-full flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm transition hover:border-zinc-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+      className="group flex h-full flex-col rounded-lg border border-zinc-200 bg-white shadow-sm transition hover:border-zinc-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
     >
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-zinc-100">
+      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-t-lg bg-zinc-100">
         <TitleBrandBadge status={vehicle.title_status} />
         <span
           className={`absolute right-2 top-2 z-10 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_PILL_CLASS[status]}`}
@@ -151,7 +160,12 @@ export default function VehicleCard({ vehicle }: Props) {
               )}
             </p>
           </div>
-          <SmartPriceSlot />
+          <SmartPriceBadge
+            verdict={verdict}
+            band={band}
+            tooltipId={`smart-price-${vehicle.id}`}
+            interactive={false}
+          />
         </div>
       </div>
     </Link>

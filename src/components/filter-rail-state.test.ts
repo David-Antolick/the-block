@@ -103,6 +103,58 @@ describe('applyFilters — categorical narrowing', () => {
   });
 });
 
+describe('applyFilters — Smart Price', () => {
+  // Three comps in a coherent make/model/year cluster so compPriceBand produces
+  // a real band [18_000, 20_000, 22_000]; the target sits at varying current
+  // bids to exercise each verdict.
+  function makeCluster(targetBid: number): readonly Vehicle[] {
+    return [
+      makeVehicle({ id: 'target', odometer_km: 60_000, current_bid: targetBid }),
+      makeVehicle({ id: 'c1', odometer_km: 61_000, current_bid: 18_000 }),
+      makeVehicle({ id: 'c2', odometer_km: 62_000, current_bid: 20_000 }),
+      makeVehicle({ id: 'c3', odometer_km: 63_000, current_bid: 22_000 }),
+    ];
+  }
+
+  it('returns all when smartPriceVerdicts is empty (no filter)', () => {
+    const fleet = makeCluster(15_000);
+    expect(applyFilters(fleet, PERMISSIVE, NO_BIDS)).toHaveLength(4);
+  });
+
+  it('narrows to "below market" verdicts', () => {
+    const fleet = makeCluster(10_000); // target < band.low (18_000) → below
+    const result = applyFilters(
+      fleet,
+      { ...PERMISSIVE, smartPriceVerdicts: ['below'] },
+      NO_BIDS,
+    );
+    expect(result.map((v) => v.id)).toContain('target');
+  });
+
+  it('excludes a target whose verdict is "above" when filtering for "below"', () => {
+    const fleet = makeCluster(30_000); // target > band.high (22_000) → above
+    const result = applyFilters(
+      fleet,
+      { ...PERMISSIVE, smartPriceVerdicts: ['below'] },
+      NO_BIDS,
+    );
+    expect(result.map((v) => v.id)).not.toContain('target');
+  });
+
+  it('drops unscored lots when the filter is active', () => {
+    // Solitary make/model — no comps available → verdict 'unknown'
+    const fleet: readonly Vehicle[] = [
+      makeVehicle({ id: 'lonely', make: 'Tesla', model: 'Model Y', current_bid: 40_000 }),
+    ];
+    const result = applyFilters(
+      fleet,
+      { ...PERMISSIVE, smartPriceVerdicts: ['below', 'fair', 'above'] },
+      NO_BIDS,
+    );
+    expect(result).toHaveLength(0);
+  });
+});
+
 describe('applyFilters — title status defaults', () => {
   const fleet: readonly Vehicle[] = [
     makeVehicle({ id: 'clean', title_status: 'clean' }),
@@ -276,6 +328,17 @@ describe('enumerateActiveFilters', () => {
   it('chips min condition grade with one decimal', () => {
     const chips = enumerateActiveFilters({ ...DEFAULT_FILTER_STATE, minConditionGrade: 3.5 });
     expect(chips.map((c) => c.label)).toContain('Min condition 3.5');
+  });
+
+  it('chips Smart Price verdicts with the "Smart: …" prefix', () => {
+    const chips = enumerateActiveFilters({
+      ...DEFAULT_FILTER_STATE,
+      smartPriceVerdicts: ['below', 'above'],
+    });
+    const labels = chips.map((c) => c.label);
+    expect(labels).toContain('Smart: Below market');
+    expect(labels).toContain('Smart: Above market');
+    expect(labels).not.toContain('Smart: Fair price');
   });
 
   it("chip.clear() reverses the chip's own effect", () => {
