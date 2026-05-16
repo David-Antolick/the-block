@@ -11,7 +11,7 @@ All notable changes to "The Block." Reverse chronological — most recent at top
 - **Strict TS config** in `tsconfig.app.json`: `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `exactOptionalPropertyTypes`, plus `noUnusedLocals` / `noUnusedParameters` / `noFallthroughCasesInSwitch` / `erasableSyntaxOnly`.
 - **ESLint flat config** with `typescript-eslint`, `react-hooks` recommended, and `react-refresh/vite`. `npm run lint` reports zero issues on the placeholder code.
 - **Vitest** with jsdom environment, globals, and `@testing-library/jest-dom` matchers wired in `src/test/setup.ts`. Types include `vitest/globals` and `@testing-library/jest-dom` so matchers don't need explicit imports in test files.
-- **Dependency pinning**: `.npmrc` (`save-exact=true`), `.nvmrc` (`24`). Every direct dep in `package.json` pinned exact. `package-lock.json` committed. See **D015**.
+- **Dependency pinning**: `.npmrc` (`save-exact=true`), `.nvmrc` (`24`). Every direct dep in `package.json` pinned exact. `package-lock.json` committed. See **D013**.
 
 ### Verified
 - `npm audit` — 0 vulnerabilities (no accepted-risk entries needed in DECISIONS).
@@ -21,7 +21,7 @@ All notable changes to "The Block." Reverse chronological — most recent at top
 - `npm run dev` — splash page renders at `http://127.0.0.1:5173/`, Tailwind classes applied, no console errors.
 
 ### Decisions
-- **D015** — Pin all dependencies to exact versions.
+- **D013** — Pin all dependencies to exact versions.
 
 ---
 

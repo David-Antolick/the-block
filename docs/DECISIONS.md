@@ -81,7 +81,23 @@ Two stretches held in reserve if time runs out on these:
 
 ## Build phase
 
-### D015: Pin all dependencies to exact versions
+### D011: Buy-now price is an inclusive upper bound for bids
+**Date:** 2026-05-16
+**Context:** `validateBid` rejects amounts strictly greater than `buy_now_price`. The exact-equal boundary (`amount === buy_now_price`) needed a deliberate ruling — it could be read either way, and the test suite has to assert one.
+**Decision:** Inclusive ceiling. A bid exactly equal to `buy_now_price` is valid; one dollar above is rejected with reason `above_buy_now`. The boundary is covered by an explicit test case in `bidding.test.ts`.
+**Rationale:** Matches the buyer mental model — "I'll just match the Buy Now price" should succeed, not silently fail. Inclusive is also how OPENLANE's own UI treats the threshold in practice. The alternative (exclusive) creates a confusing one-dollar gap between "highest legal bid" and "Buy Now" with no product justification.
+**Caveat:** If a future requirement separates "place bid" from "take buy now" as distinct intents (so reaching the buy-now price *auto-converts* the action), this rule changes. Today they're the same submit path, so the ceiling is the right semantic.
+
+### D012: `validateBid` is pure math — no auction-status, no time, no DOM
+**Date:** 2026-05-16
+**Context:** It's tempting to fold "lot must be Active to accept bids" into `validateBid` so the validator becomes a one-stop gate. But auction status is a function of `now`, which makes the validator time-coupled and pulls a clock into the test surface.
+**Decision:** `validateBid` (and the rest of `bidding.ts`) sees only `(amount, vehicle, userBids)`. Auction-status gating lives in the UI: the Place Bid button is disabled when `auctionStatus(vehicle) !== 'active'`, and submission is short-circuited before `validateBid` is even called. The bidding module imports nothing from `time.ts`.
+**Rationale:** Separates the two questions a reviewer would want answered independently: (1) is this *amount* well-formed against this lot? (2) is this lot *currently accepting* bids? Mixing them couples the unit tests to a clock and makes "what does the validator do" harder to reason about. Pure-math validators also compose better with future surfaces — e.g., a "what would this bid look like" preview tooltip that runs even on Ended lots.
+**Caveat:** This shifts a responsibility onto callers (UI must gate on status). The discipline is small — `disabled={status !== 'active'}` on the bid button — and is enforced by the M6 smoke check.
+
+---
+
+### D013: Pin all dependencies to exact versions
 **Date:** 2026-05-16
 **Context:** A loose `package.json` with caret ranges (`^1.2.3`) means every reinstall can drift to a new transitive tree and silently change behavior. For a deliverable other people will clone and run, that reproducibility gap is the wrong default.
 **Decision:** Pin every direct dependency to an exact version (no `^`, no `~`). Enforce going forward with `.npmrc` containing `save-exact=true`. Lock the Node major version via `.nvmrc` (currently `24`). Run `npm audit` after every install; address high/critical CVEs explicitly, never via `npm audit fix --force`. Commit `package-lock.json`.
