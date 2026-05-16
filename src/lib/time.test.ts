@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { ACTIVE_WINDOW_MS, auctionStatus, msUntil, shiftAuctionStart } from './time';
+import {
+  ACTIVE_WINDOW_MS,
+  CLOSING_WINDOW_MS,
+  auctionPhase,
+  auctionStatus,
+  formatCountdown,
+  msUntil,
+  nextTransitionIso,
+  shiftAuctionStart,
+} from './time';
 
 // Anchor matches DATASET_ANCHOR_MS in time.ts. Hardcoded here so the test
 // would catch an accidental anchor edit on the source side.
@@ -82,5 +91,84 @@ describe('parseDatasetIso convention (D014)', () => {
 
   it('auctionStatus produces identical buckets for bare vs Z-suffixed', () => {
     expect(auctionStatus(bare, now)).toBe(auctionStatus(zoned, now));
+  });
+});
+
+describe('nextTransitionIso', () => {
+  it('targets the shifted start for an upcoming lot', () => {
+    const now = new Date('2026-05-16T12:00:00Z');
+    const iso = '2026-04-05T14:00:00Z'; // 2h after anchor → 2h after now
+    const target = nextTransitionIso(iso, now);
+    expect(target).toBe(shiftAuctionStart(iso, now));
+    expect(msUntil(target!, now)).toBe(2 * 60 * 60 * 1000);
+  });
+
+  it('targets shiftedStart + window for an active lot', () => {
+    const now = new Date('2026-05-16T12:00:00Z');
+    // Active right at the anchor (shifted start === now)
+    const iso = '2026-04-05T12:00:00Z';
+    const target = nextTransitionIso(iso, now);
+    expect(msUntil(target!, now)).toBe(ACTIVE_WINDOW_MS);
+  });
+
+  it('returns null for an ended lot', () => {
+    const now = new Date('2026-05-16T12:00:00Z');
+    expect(nextTransitionIso('2026-04-01T00:00:00Z', now)).toBeNull();
+  });
+});
+
+describe('auctionPhase', () => {
+  const now = new Date('2026-05-16T12:00:00Z');
+  const anchorIso = '2026-04-05T12:00:00Z';
+  const anchorMs = new Date(anchorIso).getTime();
+
+  it('passes upcoming/ended through unchanged', () => {
+    expect(auctionPhase('2026-04-05T14:00:00Z', now)).toBe('upcoming');
+    expect(auctionPhase('2026-04-01T00:00:00Z', now)).toBe('ended');
+  });
+
+  it('reports active when remaining window is comfortably above the closing threshold', () => {
+    // Lot with ~ACTIVE_WINDOW_MS remaining → not yet closing.
+    expect(auctionPhase(anchorIso, now)).toBe('active');
+  });
+
+  it('promotes to closing inside the CLOSING_WINDOW_MS tail and at the boundary', () => {
+    // Iso such that shifted end == now + (CLOSING_WINDOW_MS - 1ms) → closing.
+    const justInsideClosing = new Date(
+      anchorMs - ACTIVE_WINDOW_MS + (CLOSING_WINDOW_MS - 1),
+    ).toISOString();
+    expect(auctionPhase(justInsideClosing, now)).toBe('closing');
+
+    // Exactly at the threshold (msUntil === CLOSING_WINDOW_MS) is still closing
+    // — the boundary is inclusive so the pill flips one ms before, not one ms
+    // after, the threshold.
+    const exactlyAtThreshold = new Date(
+      anchorMs - ACTIVE_WINDOW_MS + CLOSING_WINDOW_MS,
+    ).toISOString();
+    expect(auctionPhase(exactlyAtThreshold, now)).toBe('closing');
+  });
+});
+
+describe('formatCountdown', () => {
+  it('caps at "0s" for non-positive durations', () => {
+    expect(formatCountdown(0)).toBe('0s');
+    expect(formatCountdown(-5000)).toBe('0s');
+  });
+
+  it('formats <1h as "Mm SSs" with a zero-padded seconds field', () => {
+    expect(formatCountdown(3 * 60_000 + 42_000)).toBe('3m 42s');
+    expect(formatCountdown(3 * 60_000 + 5_000)).toBe('3m 05s');
+  });
+
+  it('drops seconds for ≥1h durations', () => {
+    // 4h 12m 30s → "4h 12m"
+    expect(formatCountdown(4 * 3600_000 + 12 * 60_000 + 30_000)).toBe('4h 12m');
+  });
+
+  it('formats ≥1d as "Nd Hh Mm"', () => {
+    // 2d 4h 12m 7s → "2d 4h 12m"
+    expect(
+      formatCountdown(2 * 86400_000 + 4 * 3600_000 + 12 * 60_000 + 7_000),
+    ).toBe('2d 4h 12m');
   });
 });

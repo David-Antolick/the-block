@@ -25,7 +25,14 @@ import {
 import { compPriceBand, smartPriceVerdict } from '../lib/comps';
 import { VEHICLES } from '../data/vehicles';
 import { formatCurrency } from '../lib/format';
-import { auctionStatus, type AuctionStatus } from '../lib/time';
+import {
+  auctionPhase,
+  auctionStatus,
+  formatCountdown,
+  nextTransitionIso,
+  type AuctionPhase,
+} from '../lib/time';
+import { useCountdown } from '../hooks/useCountdown';
 import { useBids, useBidsFor, usePlaceBid } from '../state/bid-context';
 import SmartPriceBadge from './SmartPriceBadge';
 
@@ -33,17 +40,27 @@ interface Props {
   vehicle: Vehicle;
 }
 
-// Mirrors VehicleCard so card and VDP read identically. "Closing" is Phase 8.
-const STATUS_LABEL: Record<AuctionStatus, string> = {
+// Mirrors VehicleCard so card and VDP read identically. Closing was promoted
+// to a first-class phase in Stretch B (D021).
+const PHASE_LABEL: Record<AuctionPhase, string> = {
   upcoming: 'Upcoming',
   active: 'Active',
+  closing: 'Closing',
   ended: 'Ended',
 };
 
-const STATUS_PILL_CLASS: Record<AuctionStatus, string> = {
+const PHASE_PILL_CLASS: Record<AuctionPhase, string> = {
   upcoming: 'bg-zinc-100 text-zinc-700 ring-1 ring-inset ring-zinc-200',
   active: 'bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200',
+  closing:
+    'bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-300 animate-pulse',
   ended: 'bg-zinc-200 text-zinc-600 ring-1 ring-inset ring-zinc-300',
+};
+
+const COUNTDOWN_LABEL: Partial<Record<AuctionPhase, string>> = {
+  upcoming: 'Opens in',
+  active: 'Closes in',
+  closing: 'Closes in',
 };
 
 // Newest first — buyers scanning "your bids" want the most recent at the top.
@@ -62,8 +79,20 @@ export default function BidPanel({ vehicle }: Props) {
   const bidsByVehicle = useBids();
   const placeBid = usePlaceBid();
 
+  // `auctionStatus` is the engine for the bid-gating decision (Closing is
+  // still Active under the hood — bids continue to land in the final 10m).
+  // `phase` is the display-layer label that promotes Active → Closing once
+  // the lot enters the closing window.
   const status = auctionStatus(vehicle.auction_start);
+  const phase = auctionPhase(vehicle.auction_start);
   const isActive = status === 'active';
+
+  // Tick only while the lot has a future transition target. Ended lots get
+  // `null` from `nextTransitionIso` and short-circuit the interval via the
+  // hook's `enabled` arg.
+  const transitionTarget = nextTransitionIso(vehicle.auction_start);
+  const msRemaining = useCountdown(transitionTarget, { enabled: status !== 'ended' });
+  const countdownLabel = COUNTDOWN_LABEL[phase];
   const current = displayedCurrentBid(vehicle, userBids);
   const minNext = minNextBid(vehicle, userBids);
   const floor = floorStatus(vehicle, userBids);
@@ -133,11 +162,23 @@ export default function BidPanel({ vehicle }: Props) {
       className="flex flex-col gap-5 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm"
     >
       <header className="flex items-center justify-between gap-3">
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_PILL_CLASS[status]}`}
-        >
-          {STATUS_LABEL[status]}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PHASE_PILL_CLASS[phase]}`}
+          >
+            {PHASE_LABEL[phase]}
+          </span>
+          {countdownLabel && msRemaining != null && (
+            <span
+              aria-live={phase === 'closing' ? 'polite' : 'off'}
+              className={`text-xs tabular-nums ${
+                phase === 'closing' ? 'font-semibold text-amber-800' : 'text-zinc-600'
+              }`}
+            >
+              {countdownLabel} {formatCountdown(msRemaining)}
+            </span>
+          )}
+        </div>
         <span className="text-xs text-zinc-500 tabular-nums">
           {totalBidCount} {totalBidCount === 1 ? 'bid' : 'bids'}
         </span>
