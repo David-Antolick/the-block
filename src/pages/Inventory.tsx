@@ -19,6 +19,8 @@ import {
 import { VEHICLES } from '../data/vehicles';
 import { useBids } from '../state/bid-context';
 import { displayedCurrentBid } from '../lib/bidding';
+import type { CompPriceBand } from '../lib/comps';
+import { compPriceBand } from '../lib/comps';
 import { ACTIVE_WINDOW_MS, shiftAuctionStart } from '../lib/time';
 import type { Vehicle } from '../types/vehicle';
 import type { BidsByVehicle } from '../state/bid-context';
@@ -95,9 +97,35 @@ export default function Inventory() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const bidsByVehicle = useBids();
 
+  // Comp-band table only when the Smart Price filter needs it for every
+  // vehicle. With the filter OFF (default), applyFilters skips the band
+  // and each rendered card computes its own — ~50 lookups, cheaper than
+  // eagerly walking the full 200. With the filter ON, the precompute
+  // amortizes across applyFilters + the card grid, eliminating the
+  // previous double-pass.
+  const smartFilterActive = filters.smartPriceVerdicts.length > 0;
+  const bandsById = useMemo(() => {
+    if (!smartFilterActive) return null;
+    const map = new Map<string, CompPriceBand | null>();
+    for (const v of VEHICLES) {
+      map.set(v.id, compPriceBand(v, VEHICLES, bidsByVehicle));
+    }
+    return map;
+  }, [bidsByVehicle, smartFilterActive]);
+
   const filteredSorted = useMemo(
-    () => sortVehicles(applyFilters(VEHICLES, filters, bidsByVehicle), sortKey, bidsByVehicle),
-    [filters, sortKey, bidsByVehicle],
+    () =>
+      sortVehicles(
+        applyFilters(
+          VEHICLES,
+          filters,
+          bidsByVehicle,
+          bandsById ? (v) => bandsById.get(v.id) ?? null : undefined,
+        ),
+        sortKey,
+        bidsByVehicle,
+      ),
+    [filters, sortKey, bidsByVehicle, bandsById],
   );
 
   const chips = useMemo(() => enumerateActiveFilters(filters), [filters]);
@@ -197,7 +225,10 @@ export default function Inventory() {
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filteredSorted.map((v) => (
                 <li key={v.id}>
-                  <VehicleCard vehicle={v} />
+                  <VehicleCard
+                    vehicle={v}
+                    band={bandsById ? (bandsById.get(v.id) ?? null) : undefined}
+                  />
                 </li>
               ))}
             </ul>

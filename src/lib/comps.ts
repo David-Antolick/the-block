@@ -21,6 +21,20 @@ export const COMP_COUNT = 3;
 
 export type SmartPriceVerdict = 'below' | 'fair' | 'above' | 'unknown';
 
+/** Verdicts that actually carry signal — `'unknown'` is the "nothing to say"
+ *  case and never renders or filters on. */
+export type ScoredVerdict = Exclude<SmartPriceVerdict, 'unknown'>;
+
+export const SCORED_VERDICTS: readonly ScoredVerdict[] = ['below', 'fair', 'above'];
+
+/** Display labels for scored verdicts. Co-located with the verdict type so the
+ *  badge and the filter rail can't drift on copy. */
+export const VERDICT_LABEL: Record<ScoredVerdict, string> = {
+  below: 'Below market',
+  fair: 'Fair price',
+  above: 'Above market',
+};
+
 export interface CompPriceBand {
   readonly comps: readonly Vehicle[];
   readonly prices: readonly number[];
@@ -59,9 +73,16 @@ export function findComps(target: Vehicle, pool: readonly Vehicle[]): readonly V
  * `displayedCurrentBid(...)` so user-placed bids on comps move the band the
  * way they'd move any real-world price signal.
  *
- * Returns `null` when there are no comps, or when every comp's price is zero
- * (a lot of just-listed lots seed `current_bid` at 0 — a band of zeros isn't
- * a useful signal and would mark every priced lot as "above").
+ * **Zero-priced comps are dropped from the band** — a lot that's just been
+ * listed (no bids yet) seeds `current_bid` at 0 and tells us nothing about
+ * what the market clears at. Including them would pin `low` at 0 and turn
+ * "fair" into "anywhere between zero and the highest comp," which is
+ * useless signal. Floors would tighten the band but D007 forbids surfacing
+ * the reserve number, so we'd be reading from data the UI can't show.
+ *
+ * Returns `null` when no comps remain after the zero-price filter. The
+ * surfaced `comps` array also reflects the filter so the VDP comp panel
+ * doesn't render a mini-card with a "$0" price next to a real one.
  *
  * Median is `prices[floor(n/2)]` after sorting — exact for odd n, slightly
  * biased toward the higher value for even n (I3 in PLAN.md). Acceptable
@@ -73,15 +94,19 @@ export function compPriceBand(
   pool: readonly Vehicle[],
   bidsByVehicle: Readonly<Record<string, readonly UserBid[]>>,
 ): CompPriceBand | null {
-  const comps = findComps(target, pool);
-  if (comps.length === 0) return null;
+  const candidates = findComps(target, pool);
+  const priced: Array<{ comp: Vehicle; price: number }> = [];
+  for (const comp of candidates) {
+    const price = displayedCurrentBid(comp, bidsByVehicle[comp.id] ?? []);
+    if (price > 0) priced.push({ comp, price });
+  }
+  if (priced.length === 0) return null;
 
-  const prices = comps.map((c) => displayedCurrentBid(c, bidsByVehicle[c.id] ?? []));
+  const comps = priced.map((p) => p.comp);
+  const prices = priced.map((p) => p.price);
   const sorted = [...prices].sort((a, b) => a - b);
-  const high = sorted[sorted.length - 1] ?? 0;
-  if (high <= 0) return null;
-
   const low = sorted[0] ?? 0;
+  const high = sorted[sorted.length - 1] ?? 0;
   const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
 
   return { comps, prices, low, median, high };

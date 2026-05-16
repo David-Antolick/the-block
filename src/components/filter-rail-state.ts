@@ -14,6 +14,8 @@ import type {
 import type { AuctionStatus } from '../lib/time';
 import { auctionStatus } from '../lib/time';
 import { displayedCurrentBid } from '../lib/bidding';
+import type { CompPriceBand, ScoredVerdict } from '../lib/comps';
+import { SCORED_VERDICTS, VERDICT_LABEL, compPriceBand, smartPriceVerdict } from '../lib/comps';
 import type { BidsByVehicle } from '../state/bid-context';
 import { formatCurrency } from '../lib/format';
 
@@ -28,10 +30,16 @@ export interface FilterState {
   priceMax: number | null;
   minConditionGrade: number | null;
   auctionStatuses: readonly AuctionStatus[];
+  /** Smart Price verdict allow-list. Empty = no filter (show all, including
+   *  lots that have no comp signal). Non-empty narrows to the listed
+   *  verdicts; `'unknown'` lots fall out because no scored verdict matches. */
+  smartPriceVerdicts: readonly ScoredVerdict[];
 }
 
 // Defaults match the trust thesis (CLAUDE.md): salvage hidden until opted in;
-// ended hidden so the grid leads with lots a buyer can still act on.
+// ended hidden so the grid leads with lots a buyer can still act on. Smart
+// Price defaults to "no filter" — the badge already signals per-card; the
+// filter is for buyers who want to lead with comp-discounted lots.
 export const DEFAULT_FILTER_STATE: FilterState = {
   search: '',
   makes: [],
@@ -43,21 +51,31 @@ export const DEFAULT_FILTER_STATE: FilterState = {
   priceMax: null,
   minConditionGrade: null,
   auctionStatuses: ['upcoming', 'active'],
+  smartPriceVerdicts: [],
 };
 
 export const ALL_TITLE_STATUSES: readonly TitleStatus[] = ['clean', 'rebuilt', 'salvage'];
 export const ALL_AUCTION_STATUSES: readonly AuctionStatus[] = ['upcoming', 'active', 'ended'];
+export { SCORED_VERDICTS, VERDICT_LABEL };
+export type { ScoredVerdict };
 
 /**
  * Apply the filter state to the vehicle list. Headline price (used for the
  * price-range filter) is `displayedCurrentBid(v, bidsByVehicle[v.id])`, which
  * matches what the card itself shows — so the filter and the card never
  * disagree on the number being filtered against.
+ *
+ * `getBand` (optional) is a memoized comp-band lookup hoisted from the page;
+ * when supplied, the Smart Price filter reuses the same cache the inventory
+ * grid is reading from, so each vehicle's band is computed at most once per
+ * `bidsByVehicle` change. Falls back to a fresh `compPriceBand(...)` call
+ * when omitted (test paths, headless usage).
  */
 export function applyFilters(
   vehicles: readonly Vehicle[],
   state: FilterState,
   bidsByVehicle: BidsByVehicle,
+  getBand?: (v: Vehicle) => CompPriceBand | null,
 ): readonly Vehicle[] {
   const search = state.search.trim().toLowerCase();
 
@@ -82,6 +100,18 @@ export function applyFilters(
     if (search) {
       const haystack = `${v.make} ${v.model} ${v.trim} ${v.lot}`.toLowerCase();
       if (!haystack.includes(search)) return false;
+    }
+
+    // Smart Price filter runs last because it's the most expensive (O(pool)
+    // per vehicle inside compPriceBand). Skipping it when nothing's selected
+    // keeps the default-view cost flat. Pool is the full `vehicles` arg so
+    // the verdict reflects the whole market, not just the currently-visible
+    // slice — filtering shouldn't move the comp band.
+    if (state.smartPriceVerdicts.length > 0) {
+      const band = getBand ? getBand(v) : compPriceBand(v, vehicles, bidsByVehicle);
+      const verdict = smartPriceVerdict(price, band);
+      if (verdict === 'unknown') return false;
+      if (!state.smartPriceVerdicts.includes(verdict)) return false;
     }
 
     return true;
@@ -140,6 +170,17 @@ export function enumerateActiveFilters(state: FilterState): ActiveFilterChip[] {
       key: `drive:${drive}`,
       label: `Drivetrain: ${drive}`,
       clear: (c) => ({ ...c, drivetrains: c.drivetrains.filter((d) => d !== drive) }),
+    });
+  }
+
+  for (const v of state.smartPriceVerdicts) {
+    chips.push({
+      key: `smart:${v}`,
+      label: `Smart: ${VERDICT_LABEL[v]}`,
+      clear: (c) => ({
+        ...c,
+        smartPriceVerdicts: c.smartPriceVerdicts.filter((s) => s !== v),
+      }),
     });
   }
 

@@ -106,6 +106,22 @@ describe('compPriceBand', () => {
     expect(compPriceBand(target, pool, {})).toBeNull();
   });
 
+  it('drops zero-priced comps from the band so low isn’t pinned at 0', () => {
+    const target = makeVehicle({ id: 'T', odometer_km: 60_000 });
+    const pool = [
+      target,
+      makeVehicle({ id: 'fresh', odometer_km: 60_500, current_bid: 0 }),
+      makeVehicle({ id: 'A', odometer_km: 61_000, current_bid: 18_000 }),
+      makeVehicle({ id: 'B', odometer_km: 62_000, current_bid: 22_000 }),
+    ];
+    const band = compPriceBand(target, pool, {});
+    expect(band).not.toBeNull();
+    expect(band!.comps.map((c) => c.id)).not.toContain('fresh');
+    expect(band!.prices).toEqual([18_000, 22_000]);
+    expect(band!.low).toBe(18_000);
+    expect(band!.high).toBe(22_000);
+  });
+
   it('computes low/median/high over the displayed current bids', () => {
     const target = makeVehicle({ id: 'T', odometer_km: 60_000 });
     const pool = [
