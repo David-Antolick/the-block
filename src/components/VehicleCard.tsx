@@ -14,7 +14,7 @@ import type { CompPriceBand } from '../lib/comps';
 import { compPriceBand, smartPriceVerdict } from '../lib/comps';
 import { VEHICLES } from '../data/vehicles';
 import { formatCurrency, formatOdometer } from '../lib/format';
-import { auctionStatus, type AuctionStatus } from '../lib/time';
+import { auctionPhase, type AuctionPhase } from '../lib/time';
 import { useBids, useBidsFor } from '../state/bid-context';
 import SmartPriceBadge from './SmartPriceBadge';
 
@@ -29,31 +29,46 @@ interface Props {
   band?: CompPriceBand | null | undefined;
 }
 
-// Pill copy is OPENLANE's lifecycle vocabulary (D007). Per CLAUDE.md, "Closing"
-// is reserved for Stretch B and not surfaced here yet.
-const STATUS_LABEL: Record<AuctionStatus, string> = {
+// Pill copy is OPENLANE's lifecycle vocabulary (D007). Stretch B (D021)
+// promoted "Closing" to a first-class state alongside Upcoming/Active/Ended.
+const PHASE_LABEL: Record<AuctionPhase, string> = {
   upcoming: 'Upcoming',
   active: 'Active',
+  closing: 'Closing',
   ended: 'Ended',
 };
 
-const STATUS_PILL_CLASS: Record<AuctionStatus, string> = {
+const PHASE_PILL_CLASS: Record<AuctionPhase, string> = {
   upcoming: 'bg-zinc-100 text-zinc-700 ring-1 ring-inset ring-zinc-200',
   active: 'bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200',
+  // Amber + pulse — "ending soon" signal the eye picks up in a grid sweep.
+  closing:
+    'bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-300 animate-pulse',
   ended: 'bg-zinc-200 text-zinc-600 ring-1 ring-inset ring-zinc-300',
 };
 
 function TitleBrandBadge({ status }: { status: Vehicle['title_status'] }) {
   if (status === 'clean') return null;
   const isSalvage = status === 'salvage';
+  // Top-left with an inline icon (D021) — corner is the buyer's pre-attentive
+  // scan target on a card grid, and the icon makes the brand readable before
+  // the text resolves at small sizes.
   return (
     <span
+      role="note"
+      aria-label={`${isSalvage ? 'Salvage' : 'Rebuilt'} title brand`}
       className={
         isSalvage
-          ? 'absolute left-2 top-2 z-10 rounded-md bg-red-600 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white shadow'
-          : 'absolute left-2 top-2 z-10 rounded-md bg-amber-500 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white shadow'
+          ? 'absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white shadow'
+          : 'absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-md bg-amber-500 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white shadow'
       }
     >
+      <span
+        aria-hidden="true"
+        className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white/25 text-[10px] font-bold leading-none"
+      >
+        !
+      </span>
       {isSalvage ? 'Salvage title' : 'Rebuilt title'}
     </span>
   );
@@ -63,7 +78,7 @@ export default function VehicleCard({ vehicle, band: providedBand }: Props) {
   const userBids = useBidsFor(vehicle.id);
   const bidsByVehicle = useBids();
   const headline = displayedCurrentBid(vehicle, userBids);
-  const status = auctionStatus(vehicle.auction_start);
+  const phase = auctionPhase(vehicle.auction_start);
   const floor = floorStatus(vehicle, userBids);
   const heroImage = vehicle.images[0];
   const heroAlt = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
@@ -86,9 +101,9 @@ export default function VehicleCard({ vehicle, band: providedBand }: Props) {
       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-t-lg bg-zinc-100">
         <TitleBrandBadge status={vehicle.title_status} />
         <span
-          className={`absolute right-2 top-2 z-10 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_PILL_CLASS[status]}`}
+          className={`absolute right-2 top-2 z-10 rounded-full px-2 py-0.5 text-xs font-medium ${PHASE_PILL_CLASS[phase]}`}
         >
-          {STATUS_LABEL[status]}
+          {PHASE_LABEL[phase]}
         </span>
         {heroImage ? (
           <img

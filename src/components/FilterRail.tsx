@@ -295,6 +295,14 @@ function RailBody({ value, onChange, facets, onResetAll }: RailBodyProps) {
             })
           }
         />
+        {/* Inline explanation rather than a hover-only tooltip (D021): keyboard
+            users and first-time visitors both see it without discovery, and
+            the trust thesis (CLAUDE.md) is that the salvage exclusion is a
+            visible default, not a hidden one. */}
+        <p className="mt-2 text-[11px] leading-snug text-zinc-500">
+          Salvage lots are hidden by default. These vehicles carry a salvage
+          title brand — warrant extra inspection and may not be financeable.
+        </p>
       </FieldSection>
 
       <FieldSection title="Body style">

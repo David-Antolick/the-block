@@ -4,6 +4,76 @@ All notable changes to "The Block." Reverse chronological — most recent at top
 
 ---
 
+## [2026-05-16] Phase 8.3 — Persist the session anchor across reloads (`feature/state-machine`)
+
+Follow-on to **L002**: freezing the shift baseline made countdowns tick during a session, but every full page reload re-anchored against a fresh `Date.now()` and snapped the countdown back to its initial value. **D022** captures the persistence design call (storage tier, TTL, validation depth, eager-vs-lazy init).
+
+### Changed
+- **`src/lib/time.ts`** — `SESSION_NOW_MS` now resolves through `resolveSessionAnchor()`, which reads `{capturedAt: number}` from `localStorage` under `openlane-block:session-anchor:v1` via the existing `readJSON` helper. Reuses the stored value when (`now - storedAt) < 24h` and `storedAt ≤ now`; otherwise writes a fresh anchor and returns it. Defensive shape check (`typeof capturedAt === 'number'`, `Number.isFinite`, no future-dated values) so schema drift or corrupted storage degrades to a re-anchor rather than nonsense countdowns. Module-load side effect is intentional — every consumer reads `SESSION_NOW_MS` synchronously and the `storage.ts` `getStorage()` guard already no-ops in non-browser environments.
+
+### Verified
+- `npm run lint` — clean.
+- `npm test -- --run` — 92 passed (no test surface change; the regression block in `time.test.ts` exercises the no-`now` path and would catch a re-anchoring drift if persistence broke it).
+- `npm run build` — zero TS errors. Bundle 507 kB JS / 116 kB gzip (delta within noise — one small function added).
+- Manual smoke: opened a VDP showing "Closes in 1m 30s", let it tick to ~1m 10s, full reload — countdown picked up at "Closes in 1m 09s" (read jitter only). Cleared `openlane-block:session-anchor:v1` from DevTools, reloaded — countdown reset to its fresh-anchor value as expected.
+
+### Decisions
+- **D022** — Persist the session anchor to `localStorage` under `session-anchor:v1` with a 24h TTL. `localStorage` over `sessionStorage` (cross-tab + survives close), 24h specifically (long enough for "back after lunch," short enough that "back next week" gets a fresh distribution), defensive validation on read, eager module-load init.
+
+---
+
+## [2026-05-16] Phase 8.2 — Countdown bug fix (L002) + BidPanel component tests (`feature/state-machine`)
+
+Two concerns, one commit. (a) The Phase 8 commit's countdown didn't actually tick — manual smoke after the merge caught a frozen value; root cause was an offset recomputed against a fresh `Date.now()` per call. (b) Three behaviors landed in Phase 8 without component coverage — the pill flip at the Closing boundary, the countdown label + tiered format, and the `aria-live` polite-only-when-closing semantic. This commit fixes (a) with a regression test that would have caught it, and closes (b) with a BidPanel test file.
+
+### Fixed
+- **`src/lib/time.ts` — countdown was frozen because the shift offset was recomputed per call.** `shiftAuctionStart`'s default-arg path was computing `Date.now() - DATASET_ANCHOR_MS` on every call, so the shifted target drifted forward in lockstep with the wall clock and `msUntil(shiftedStart)` collapsed to the per-lot constant `parse(iso) - anchor`. `auctionStatus` boundaries collapsed the same way, so the pill state was effectively frozen too. The pure-logic tests in `time.test.ts` passed because they pinned `now` explicitly and exercised the override path — the bug only lived in the no-`now` production path. Fix: capture `SESSION_NOW_MS = Date.now()` once at module load and use it as the shift baseline when no explicit `now` is passed. See **L002**.
+
+### Added
+- **`src/lib/time.test.ts` regression block** — 2 cases under `describe('shift baseline is frozen at module load (countdown regression)')`. Uses `vi.useFakeTimers` + `vi.advanceTimersByTime` to exercise the no-`now` path with the wall clock visibly moving — the textbook "pin both inputs" tests would not have caught L002, this block does.
+- **`src/components/BidPanel.test.tsx`** — 3 cases. (a) `flips the pill from Active to Closing when the remaining window crosses the threshold` renders an 11-minute-remaining lot, asserts "Active" pill, advances fake timers 61s, asserts "Closing" pill and absence of "Active". (b) `renders "Opens in" / "Closes in" with the tiered format` covers both the `≥1h` ("Opens in 1h 5m" — seconds dropped) and `<1h` ("Closes in 3m 42s" — zero-padded seconds) tiers in `formatCountdown`. (c) `aria-live is polite only when the lot is in the Closing window` contrasts a 30-minute-remaining lot (`aria-live="off"`) against a 5-minute-remaining lot (`aria-live="polite"`).
+
+### Test infrastructure
+- The component tests use `vi.useFakeTimers()` + `vi.setSystemTime(SESSION_NOW_MS)` for a deterministic wall clock, plus an `isoForShiftedStart(shiftedStartMs)` helper that inverts the production shift so a fixture vehicle's shifted start lands at a chosen moment regardless of when `time.ts` happened to capture `SESSION_NOW_MS`. Probes the offset via `shiftAuctionStart(anchor)` (which round-trips to `SESSION_NOW_MS` exactly), so `SESSION_NOW_MS` doesn't need to be exported. Wrapping `vi.advanceTimersByTime` in `act()` lets React flush the `setTick`-triggered re-renders before the next assertion.
+
+### Verified
+- `npm run lint` — clean.
+- `npm test -- --run` — 92 passed (87 prior + 2 L002 regression cases + 3 BidPanel cases).
+- `npm run build` — zero TS errors. Bundle 507 kB JS / 116 kB gzip (no consumer-facing additions; only the SESSION_NOW_MS capture).
+- Manual smoke (post-fix): opened an Upcoming lot, watched the "Opens in" line tick down second by second; opened an Active lot, watched "Closes in" tick down; waited for the Active → Closing flip ~10m before close to confirm the pill recolors and the live region announces.
+
+### Lessons
+- **L002** — A time-shift offset must be frozen once, not recomputed per call. Tests that pin both inputs (the textbook way to test a time-dependent function) won't catch this; you need a regression that exercises the default-arguments path with the wall clock visibly moving.
+
+---
+
+## [2026-05-16] Phase 8 — Stretch B · State machine + title prominence (`feature/state-machine`)
+
+Cross-links **D008** (stretch decision) and **D021** (engine vs. display, scope of `useCountdown`, salvage tooltip swap). Second stretch branch; merges to `main` after M8 verification.
+
+### Added
+- **`src/hooks/useCountdown.ts`** — VDP-only ms-remaining hook. `useCountdown(targetIso, { intervalMs = 1000, enabled = true })` derives remaining ms on read from `Date.now()`; the effect just increments an unused tick counter from inside the `setInterval` callback so no synchronous `setState` lives in an effect body (same fix shape as Phase 6's `ImageGallery` `safeIndex` derivation). `null` target or `enabled: false` short-circuits the interval — Ended VDPs pay nothing.
+- **`src/lib/time.ts`** — `CLOSING_WINDOW_MS = 10 * 60_000`, `AuctionPhase = AuctionStatus | 'closing'`, `nextTransitionIso(iso, now)` (shifted start for upcoming, shifted start + window for active, `null` for ended), `auctionPhase(iso, now)` (promotes Active → Closing when `msUntil(end) ≤ CLOSING_WINDOW_MS`), and `formatCountdown(ms)` (tiered output: `"2d 4h 12m"` / `"4h 12m"` / `"3m 42s"`; `"0s"` on non-positive).
+- **`src/lib/time.test.ts`** — 8 new cases. `nextTransitionIso`: upcoming targets shifted start, active targets `shiftedStart + window`, ended returns null. `auctionPhase`: passes through upcoming/ended, active stays active comfortably above the threshold, promotes to closing inside the tail window + at the inclusive boundary. `formatCountdown`: clamps to `"0s"` on zero/negative, formats `<1h` with zero-padded seconds, drops seconds at `≥1h`, expands to days at `≥1d`.
+
+### Changed
+- **`src/components/BidPanel.tsx`** — pill copy now reads `auctionPhase` (Closing renders amber + pulse), while bid-gating still reads `auctionStatus` so Closing lots continue to accept bids. Header adds a live "Opens in 3m 42s" / "Closes in 0m 47s" line driven by `useCountdown(nextTransitionIso(...))`; `aria-live="polite"` on the Closing variant so screen readers get the urgency without spamming. Status / countdown disabled cleanly on Ended (no interval).
+- **`src/components/VehicleCard.tsx`** — switched from `auctionStatus` → `auctionPhase`; added Closing pill (amber + pulse) to `PHASE_LABEL` / `PHASE_PILL_CLASS`. `TitleBrandBadge` now renders an inline white-on-color "!" glyph next to the brand text (top-left corner unchanged — already there from Phase 5) with `role="note"` + `aria-label` for screen readers. No per-card tick — phase resolves once per render, refreshes on the next navigation (D021 scope choice).
+- **`src/components/FilterRail.tsx`** — replaced the hover-only tooltip plan with an always-visible help paragraph under the Title-status section: *"Salvage lots are hidden by default. These vehicles carry a salvage title brand — warrant extra inspection and may not be financeable."* The trust thesis (CLAUDE.md) says the default exclusion should be visible, not hidden; an inline paragraph also serves keyboard users that hover tooltips don't.
+
+### Verified
+- `npm run lint` — clean. First draft of `useCountdown` hit `react-hooks/set-state-in-effect` (two sync `setState`s inside the effect body); rewrote to a tick-counter pattern that derives on read. Mirrors L001's rule-of-thumb: take the lint hit seriously instead of suppressing.
+- `npm test -- --run` — 87 passed (79 prior + 8 new time/phase/countdown cases).
+- `npm run build` — zero TS errors. Bundle 507 kB JS / 116 kB gzip (~negligible delta vs. Phase 7 — most of the new code is logic, not vendor weight).
+
+### Decisions
+- **D021** — Faithful state machine: `auctionPhase` derived from `auctionStatus`, countdown hook on VDP only, salvage tooltip swapped for inline help copy.
+
+### Known issue at commit (caught post-merge, fixed in Phase 8.2)
+The countdown in this commit did not actually tick — `shiftAuctionStart`'s default-arg path computed `Date.now() - DATASET_ANCHOR_MS` on every call, so the shifted target drifted forward in lockstep with the wall clock and `msUntil` came back constant. The pure-logic tests passed because they pinned `now` explicitly and exercised the override path; the bug only lived in the no-`now` production path. Caught by manual smoke right after the commit landed; **L002** + the fix are recorded under Phase 8.2.
+
+---
+
 ## [2026-05-16] Phase 7 — Stretch A · Smart Price comps (`feature/smart-price`)
 
 Cross-links **D008** (stretch decision) and **D020** (verdict/band design micro-decisions). First stretch branch; merges to `main` after M7 verification.
