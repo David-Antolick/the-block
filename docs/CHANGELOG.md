@@ -32,6 +32,42 @@ All notable changes to "The Block." Reverse chronological — most recent at top
 
 ---
 
+## [2026-05-16] Phase 6 — Vehicle Details Page (VDP)
+
+First true two-agent fan-out: Agent A built the left-column components in parallel with Agent B building the right column, then main-agent integration composed them into `src/pages/VehicleDetail.tsx`.
+
+### Added — Left column (Agent A)
+- **`src/components/ImageGallery.tsx`** — main image + thumbnail strip; ←/→/Home/End cycle when the gallery has focus; nav-button overlays for mouse; `aria-current` / `aria-selected` on the active thumb; figure + figcaption for SR context; "N / M" counter; placeholder block when `images.length === 0`.
+- **`src/components/VehicleTitleBlock.tsx`** — lot eyebrow → H1 (year/make/model) → trim + city/province sub-line.
+- **`src/components/TitleBrandBanner.tsx`** — full-width banner under the title block; red for salvage, amber for rebuilt, returns null for clean. `role="note"`. Phase 6 baseline; Stretch B (D008) can extend.
+- **`src/components/SpecTable.tsx`** — 14-row `<dl>` (VIN through Location), two-column on desktop / one on mobile. Odometer routed through `formatOdometer()`.
+- **`src/components/ConditionSection.tsx`** — grade pill (Excellent ≥4 / Average ≥3 / Rough), condition report paragraph, damage notes with "No reported damage." fallback per M6.
+- **`src/components/DealershipCard.tsx`** — initials avatar + dealership name + location. Sticks to dataset fields (no invented rating/history per CLAUDE.md).
+
+### Added — Right column (Agent B)
+- **`src/components/BidPanel.tsx`** — status pill, headline current bid via `formatCurrency(displayedCurrentBid(...))`, floor indicator (state-only, never the reserve number per D007), live preview validation + submit-time `validateBid`, Place Bid disabled when `auctionStatus !== 'active'`, Buy Now button when `buy_now_price != null` (also gated on Active), "Your bids on this lot" newest-first. Positioning-agnostic — page wraps for layout.
+
+### Changed
+- **`src/state/BidProvider.tsx`** — Phase 4 carry-over fix: `placeBid` now reads/writes through a `useRef` mirror of `bidsByVehicle` so two synchronous calls in the same tick can't clobber each other. Dep array empties → stable callback identity. See **D019**.
+- **`src/pages/VehicleDetail.tsx`** — replaced the Phase 4 stub with the two-column composition: left column on `lg:col-span-2`, sticky right column on `lg+`, single-column stack below. Back-to-inventory link + not-found fallback retained.
+
+### Fixed — During integration
+- **`src/components/ImageGallery.tsx`** — `react-hooks/set-state-in-effect` lint hit. The original `useEffect → setIndex` guard for image-array shrink caused cascading renders. Replaced with derived `safeIndex = count > 0 ? Math.min(index, count - 1) : 0` clamped during render; stored state self-heals on next interaction via `go()`'s modulo.
+
+### Verified
+- `npm run lint` — zero issues.
+- `npm test -- --run` — 55 passed (no new test surface this phase; `BidPanel.test.tsx` and `ImageGallery.test.tsx` are deferred to Phase 9 per the user's polish-later stance).
+- `npm run build` — zero TS errors. Bundle 499 kB JS / 114 kB gzip (~+11 kB over Phase 5).
+
+### Decisions
+- **D019** — `placeBid` reads and writes through a ref, not a closure or functional setter (Strict Mode side-effect avoidance).
+
+### Open for Phase 7+
+- Component tests for the right-column bid flow + the image gallery's keyboard nav — pure-function targets (`applyFilters`, `enumerateActiveFilters`) are already covered; component-tests gap remains.
+- Mobile bid panel is inline rather than fixed-bottom (the floor pattern, per I5). A true fixed-bottom needs body-scroll-lock + safe-area handling; tracked as polish.
+
+---
+
 ## [2026-05-16] Phase 4 — App shell, routing, BidContext
 
 ### Added
