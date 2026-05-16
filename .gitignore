@@ -4,3 +4,8 @@ node_modules/
 .DS_Store
 *.log
 *.bak
+
+# Planning / scratch artifacts — kept locally to brief build agents, not shipped.
+docs/PLAN.md
+docs/CONTEXT.md
+.private/
