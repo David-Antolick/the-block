@@ -4,6 +4,44 @@ All notable changes to "The Block." Reverse chronological — most recent at top
 
 ---
 
+## [2026-05-16] Phase 3.1 — Timezone fix in `src/lib/time.ts`
+
+### Fixed
+- **Unzoned dataset timestamps were parsed as local time.** `data/vehicles.json` stores `auction_start` as bare ISO strings (`"2026-04-05T19:00:00"`); per the ECMAScript spec these parse as local. The anchor `DATASET_ANCHOR_MS` was declared in UTC via `Date.UTC(...)`, so `(now - anchor)` and `parse(datasetIso) + offset` operated in different frames — `shiftAuctionStart` output and `auctionStatus` buckets drifted by the viewer's timezone offset. The Phase 3 tests didn't catch it because every input was Z-suffixed.
+
+### Added
+- `parseDatasetIso(iso)` private helper in `src/lib/time.ts` that appends `'Z'` when no timezone designator is present (regex `/(Z|[+-]\d{2}:?\d{2})$/`) before parsing. All three exported functions (`shiftAuctionStart`, `auctionStatus`, `msUntil`) route their ISO inputs through it.
+- `describe('parseDatasetIso convention (D014)', …)` block in `src/lib/time.test.ts` with parity assertions for `shiftAuctionStart` and `auctionStatus` between bare vs Z-suffixed inputs — the check that would have caught the original bug.
+- `env: { TZ: 'America/Toronto' }` in `vite.config.ts` test block, pinning vitest's process to a non-UTC timezone. Without it the parity assertions pass vacuously on a UTC CI runner (bare and Z-suffixed parse to the same epoch ms) and the regression would silently stop guarding the fix.
+- Meta-guard test asserting the runtime tz offset is non-zero, so a future removal of the TZ pin fails loudly instead of letting the parity tests degrade into no-ops.
+
+### Verified
+- `npm test -- --run` — 32 passed (29 prior + 3 in the D014 block: 2 parity + 1 meta-guard).
+- `npm run build` — exits 0, zero TS errors.
+
+### Decisions
+- **D014** — Treat unzoned dataset timestamps as UTC via `parseDatasetIso`.
+
+---
+
+## [2026-05-16] Phase 3 — Helpers (time, storage, typed data import)
+
+### Added
+- **`src/lib/time.ts`** — `shiftAuctionStart`, `auctionStatus`, `msUntil`. Anchor `DATASET_ANCHOR_MS = Date.UTC(2026, 3, 5, 12, 0, 0)`. `ACTIVE_WINDOW_MS = 6h` per I2 in the build plan. `AuctionStatus = 'upcoming' | 'active' | 'ended'` (lowercase, matching the `FloorStatus` union convention in `bidding.ts`).
+- **`src/lib/time.test.ts`** — boundary cases for shift-preserves-order, upcoming, active (start boundary + just-inside-window), ended (at-boundary + long-past), and msUntil sign.
+- **`src/lib/storage.ts`** — namespaced (`openlane-block:`) localStorage wrapper per D003. `readJSON<T>(key, fallback): T` and `writeJSON<T>(key, value): void`. SSR guard (`typeof window === 'undefined'`); JSON parse failures and quota errors fall back rather than throw.
+- **`src/data/vehicles.ts`** — typed re-export of `data/vehicles.json` as `readonly Vehicle[]`. Single import choke-point.
+- **`tsconfig.app.json`** — added `resolveJsonModule: true` and `"data/vehicles.json"` to `include` so the typed JSON import compiles. See **D015**.
+
+### Verified
+- `npm test -- --run` — 29 passed (24 bidding + 5 time).
+- `npm run build` — exits 0, zero TS errors. Bundle ~191 kB JS / ~8 kB CSS. Dataset is available to bundle via `src/data/vehicles.ts` but currently tree-shaken (no UI consumer until Phase 4+); bundle size will grow once imported.
+
+### Decisions
+- **D015** — Bundle the dataset via `resolveJsonModule` + narrow `include`.
+
+---
+
 ## [2026-05-16] Phase 1 — Scaffold
 
 ### Added
