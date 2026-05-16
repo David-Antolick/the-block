@@ -76,3 +76,14 @@ Two stretches held in reserve if time runs out on these:
 **Context:** The challenge brief invites AI tool use and asks builders to be ready to explain how they used them, what decisions they made, and what they would refine. A vague answer ("I used Claude as autocomplete") is less honest than the actual workflow and harder to learn from than a specific one.
 **Decision:** README dedicates a top-level section to AI tool use. Names specific files / patterns / sessions where Claude Code contributed. Includes a "what I'd refine" subsection that owns the limitations of AI-generated code.
 **Rationale:** Specific and reflective beats vague and defensive. Naming the files and the contribution shape gives the reader something concrete to evaluate; the "what I'd refine" subsection signals critical engagement with the tooling rather than uncritical reliance on it.
+
+---
+
+## Build phase
+
+### D015: Pin all dependencies to exact versions
+**Date:** 2026-05-16
+**Context:** A loose `package.json` with caret ranges (`^1.2.3`) means every reinstall can drift to a new transitive tree and silently change behavior. For a deliverable other people will clone and run, that reproducibility gap is the wrong default.
+**Decision:** Pin every direct dependency to an exact version (no `^`, no `~`). Enforce going forward with `.npmrc` containing `save-exact=true`. Lock the Node major version via `.nvmrc` (currently `24`). Run `npm audit` after every install; address high/critical CVEs explicitly, never via `npm audit fix --force`. Commit `package-lock.json`.
+**Rationale:** Reproducible installs are a low-cost supply-chain hygiene win. The `.npmrc` flag prevents accidental loosening when future deps get added. `npm audit` at Phase 1 reported 0 vulnerabilities — no accepted-risk entries needed.
+**Caveat:** Exact pins mean we won't auto-pick up patch upgrades. That's the point — upgrades become an explicit, reviewable change.

@@ -4,6 +4,27 @@ All notable changes to "The Block." Reverse chronological — most recent at top
 
 ---
 
+## [2026-05-16] Phase 1 — Scaffold
+
+### Added
+- **Vite + React 19 + TypeScript 6 + Tailwind v4 + Vitest** scaffold. Dev server bound to `127.0.0.1:5173` (Windows IPv6-fallback avoidance). Build emits a ~8 kB CSS bundle (Tailwind tree-shaking verified) and a ~191 kB JS bundle.
+- **Strict TS config** in `tsconfig.app.json`: `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `exactOptionalPropertyTypes`, plus `noUnusedLocals` / `noUnusedParameters` / `noFallthroughCasesInSwitch` / `erasableSyntaxOnly`.
+- **ESLint flat config** with `typescript-eslint`, `react-hooks` recommended, and `react-refresh/vite`. `npm run lint` reports zero issues on the placeholder code.
+- **Vitest** with jsdom environment, globals, and `@testing-library/jest-dom` matchers wired in `src/test/setup.ts`. Types include `vitest/globals` and `@testing-library/jest-dom` so matchers don't need explicit imports in test files.
+- **Dependency pinning**: `.npmrc` (`save-exact=true`), `.nvmrc` (`24`). Every direct dep in `package.json` pinned exact. `package-lock.json` committed. See **D015**.
+
+### Verified
+- `npm audit` — 0 vulnerabilities (no accepted-risk entries needed in DECISIONS).
+- `npm run build` — exits 0, zero TS errors, no silenced warnings.
+- `npm run test:run` — exits 0, "No test files found" (clean state; `passWithNoTests: true` in `vite.config.ts` will be removed in Phase 2 once real tests land).
+- `npm run lint` — exits 0, zero issues.
+- `npm run dev` — splash page renders at `http://127.0.0.1:5173/`, Tailwind classes applied, no console errors.
+
+### Decisions
+- **D015** — Pin all dependencies to exact versions.
+
+---
+
 ## [2026-05-16] Phase 0 — Repo cleanup baseline
 
 ### Changed
