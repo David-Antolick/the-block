@@ -4,6 +4,34 @@ All notable changes to "The Block." Reverse chronological — most recent at top
 
 ---
 
+## [2026-05-16] Phase 4 — App shell, routing, BidContext
+
+### Added
+- **`src/state/bid-context.ts`** — `BidContext`, `BidsByVehicle` type, `BidContextValue`, and the read hooks `useBids` / `useBidsFor` / `usePlaceBid`. Hooks throw with a clear message if used outside `<BidProvider>`. `useBidsFor` returns a frozen module-level empty array so consumers' memo/effect deps are referentially stable when an unrelated vehicle's bids change.
+- **`src/state/BidProvider.tsx`** — `BidProvider` component. Lazy-hydrates state once from `localStorage` via `readJSON('bids:v1', {})` (namespaced to `openlane-block:bids:v1` per D003). `placeBid(vehicle, amount)` revalidates against current state at commit time using `validateBid` (per D012 — pure-math; provider is the validate-and-commit choke-point), persists on `ok`, and returns the `ValidationResult` so callers render the same error message as inline preview.
+- **`src/App.tsx`** — replaces the Phase 1 splash with `BrowserRouter` → `BidProvider` → header + `Routes`. React Router v7 per I6. Routes: `/` → `Inventory`, `/vehicle/:id` → `VehicleDetail`, `*` → inline `NotFound`. Provider wraps the router so any future page (Phase 5+) has hook access without extra plumbing.
+- **`src/pages/Inventory.tsx`** — Phase 4 stub: lists the first 20 vehicles as `<Link>`s to their VDPs so the router can be smoke-tested. Replaced wholesale in Phase 5.
+- **`src/pages/VehicleDetail.tsx`** — Phase 4 stub: reads `:id`, renders headline fields + a minimal place-bid form that exercises `usePlaceBid` end-to-end. Returns a not-found block for unknown ids. Replaced in Phase 6 by the full VDP.
+
+### Changed
+- `EMPTY_BIDS` is now exported from `bid-context.ts` and imported by `BidProvider.tsx` (previously declared in both files). Both halves now share the same frozen-empty-array reference so `useBidsFor` and the provider's commit path can't drift apart.
+
+### Verified
+- `npm run lint` — zero issues. (Initial draft colocated provider + hooks in one `.tsx`; React Refresh's `only-export-components` flagged the hooks — see L001. Split into `bid-context.ts` (non-component) + `BidProvider.tsx` per D016 instead of suppressing the rule.)
+- `npm test -- --run` — 32 passed (no test-surface changes in this phase).
+- `npm run build` — exits 0, zero TS errors. Bundle now ~471 kB JS / 107 kB gzip — the jump from the Phase 3 baseline (~191 kB JS) is the dataset being tree-shaken in for the first time via `Inventory`'s `VEHICLES.slice(0, 20)`. Expected per D015's caveat; will revisit only if growth becomes a problem.
+
+### Carry-overs to Phase 6
+- `placeBid` closes over `bidsByVehicle`; two synchronous calls in the same render tick both read the same closure and the second overwrites the first. Fix flagged in `docs/PLAN.md` Phase 6 — use a `useRef` for the latest state, read inside the callback, update inline alongside `setBidsByVehicle`. Signature unchanged.
+
+### Decisions
+- **D016** — Split bid state across `bid-context.ts` (non-component) and `BidProvider.tsx` (component) to preserve React Refresh HMR.
+
+### Lessons
+- **L001** — A `react-refresh/only-export-components` lint hit is a signal to split, not to suppress; the rule enforces the precondition for HMR fast refresh.
+
+---
+
 ## [2026-05-16] Phase 3.1 — Timezone fix in `src/lib/time.ts`
 
 ### Fixed
