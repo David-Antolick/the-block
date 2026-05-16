@@ -10,6 +10,16 @@
 // UTC explicitly (see D014) so the shift offset is the same in every timezone.
 const DATASET_ANCHOR_MS = Date.UTC(2026, 3, 5, 12, 0, 0);
 
+// Captured once at module load. The shift is a *one-time* anchor adjustment
+// — picking the dataset's distribution-of-times against today's wall clock,
+// then letting real time naturally advance from that baseline. (L###:
+// computing the offset against a fresh `Date.now()` per-call defeats the
+// shift — the target moves forward in lockstep with the wall clock, so
+// `msUntil(shiftedStart) === parse(iso) - anchor` becomes constant and
+// `auctionStatus` / countdowns never advance. Tests pass `now` explicitly
+// so they exercise the override path, which is still per-call.)
+const SESSION_NOW_MS = Date.now();
+
 /**
  * How long after `auction_start` a lot is considered "Active". Picked at 6h
  * (per I2 in the build plan) so the inventory has enough live lots to feel
@@ -53,13 +63,22 @@ function nowMs(now?: Date): number {
   return (now ?? new Date()).getTime();
 }
 
+// Production callers (no explicit `now`) use the session baseline so the
+// shift target is stable across renders; tests that pass `now` get the
+// per-call behavior they wrote against.
+function shiftBaselineMs(now?: Date): number {
+  return now ? now.getTime() : SESSION_NOW_MS;
+}
+
 /**
  * Shift a dataset `auction_start` ISO string into the current time frame.
- * The offset `(now - DATASET_ANCHOR)` is the same for every timestamp, so
- * relative ordering between lots is preserved exactly.
+ * The offset `(baseline - DATASET_ANCHOR)` is the same for every timestamp,
+ * so relative ordering between lots is preserved exactly. In production the
+ * baseline is frozen at module load (SESSION_NOW_MS) so the shifted target
+ * is a fixed wall-clock moment that countdowns can tick toward.
  */
 export function shiftAuctionStart(iso: string, now?: Date): string {
-  const offset = nowMs(now) - DATASET_ANCHOR_MS;
+  const offset = shiftBaselineMs(now) - DATASET_ANCHOR_MS;
   const shifted = parseDatasetIso(iso) + offset;
   return new Date(shifted).toISOString();
 }

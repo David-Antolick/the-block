@@ -11,20 +11,27 @@ Cross-links **D008** (stretch decision) and **D021** (engine vs. display, scope 
 ### Added
 - **`src/hooks/useCountdown.ts`** — VDP-only ms-remaining hook. `useCountdown(targetIso, { intervalMs = 1000, enabled = true })` derives remaining ms on read from `Date.now()`; the effect just increments an unused tick counter from inside the `setInterval` callback so no synchronous `setState` lives in an effect body (same fix shape as Phase 6's `ImageGallery` `safeIndex` derivation). `null` target or `enabled: false` short-circuits the interval — Ended VDPs pay nothing.
 - **`src/lib/time.ts`** — `CLOSING_WINDOW_MS = 10 * 60_000`, `AuctionPhase = AuctionStatus | 'closing'`, `nextTransitionIso(iso, now)` (shifted start for upcoming, shifted start + window for active, `null` for ended), `auctionPhase(iso, now)` (promotes Active → Closing when `msUntil(end) ≤ CLOSING_WINDOW_MS`), and `formatCountdown(ms)` (tiered output: `"2d 4h 12m"` / `"4h 12m"` / `"3m 42s"`; `"0s"` on non-positive).
-- **`src/lib/time.test.ts`** — 8 new cases. `nextTransitionIso`: upcoming targets shifted start, active targets `shiftedStart + window`, ended returns null. `auctionPhase`: passes through upcoming/ended, active stays active comfortably above the threshold, promotes to closing inside the tail window + at the inclusive boundary. `formatCountdown`: clamps to `"0s"` on zero/negative, formats `<1h` with zero-padded seconds, drops seconds at `≥1h`, expands to days at `≥1d`.
+- **`src/lib/time.test.ts`** — 10 new cases. `nextTransitionIso`: upcoming targets shifted start, active targets `shiftedStart + window`, ended returns null. `auctionPhase`: passes through upcoming/ended, active stays active comfortably above the threshold, promotes to closing inside the tail window + at the inclusive boundary. `formatCountdown`: clamps to `"0s"` on zero/negative, formats `<1h` with zero-padded seconds, drops seconds at `≥1h`, expands to days at `≥1d`. Plus the L002 regression block — see Fixed.
 
 ### Changed
 - **`src/components/BidPanel.tsx`** — pill copy now reads `auctionPhase` (Closing renders amber + pulse), while bid-gating still reads `auctionStatus` so Closing lots continue to accept bids. Header adds a live "Opens in 3m 42s" / "Closes in 0m 47s" line driven by `useCountdown(nextTransitionIso(...))`; `aria-live="polite"` on the Closing variant so screen readers get the urgency without spamming. Status / countdown disabled cleanly on Ended (no interval).
 - **`src/components/VehicleCard.tsx`** — switched from `auctionStatus` → `auctionPhase`; added Closing pill (amber + pulse) to `PHASE_LABEL` / `PHASE_PILL_CLASS`. `TitleBrandBadge` now renders an inline white-on-color "!" glyph next to the brand text (top-left corner unchanged — already there from Phase 5) with `role="note"` + `aria-label` for screen readers. No per-card tick — phase resolves once per render, refreshes on the next navigation (D021 scope choice).
 - **`src/components/FilterRail.tsx`** — replaced the hover-only tooltip plan with an always-visible help paragraph under the Title-status section: *"Salvage lots are hidden by default. These vehicles carry a salvage title brand — warrant extra inspection and may not be financeable."* The trust thesis (CLAUDE.md) says the default exclusion should be visible, not hidden; an inline paragraph also serves keyboard users that hover tooltips don't.
 
+### Fixed
+- **`src/lib/time.ts` — countdown was frozen because the shift offset was recomputed per call.** Manual smoke caught it: the VDP countdown sat at constant values like "3h 0m" and "1h 0m" and auction-status pills never advanced. `shiftAuctionStart`'s default-arg path computed `Date.now() - DATASET_ANCHOR_MS` on every call, so the shifted target drifted forward in lockstep with the wall clock and `msUntil(shiftedStart)` collapsed to the per-lot constant `parse(iso) - anchor`. The pure-logic tests passed because they pinned `now` explicitly and exercised the override path; the bug only lived in the no-`now` production path. Fix: capture `SESSION_NOW_MS = Date.now()` once at module load and use that as the shift baseline when no explicit `now` is passed. Added a regression block (`shift baseline is frozen at module load (countdown regression)`) that uses `vi.useFakeTimers` + `vi.advanceTimersByTime` to exercise the default-arguments path with the wall clock visibly moving — the lint of "tests pass, manual smoke fails" we hadn't caught before. See **L002**.
+
 ### Verified
 - `npm run lint` — clean. First draft of `useCountdown` hit `react-hooks/set-state-in-effect` (two sync `setState`s inside the effect body); rewrote to a tick-counter pattern that derives on read. Mirrors L001's rule-of-thumb: take the lint hit seriously instead of suppressing.
-- `npm test -- --run` — 87 passed (79 prior + 8 new time/phase/countdown cases).
+- `npm test -- --run` — 89 passed (79 prior + 8 new time/phase/countdown cases + 2 in the L002 regression block).
 - `npm run build` — zero TS errors. Bundle 507 kB JS / 116 kB gzip (~negligible delta vs. Phase 7 — most of the new code is logic, not vendor weight).
+- Manual smoke (post-fix): opened an Upcoming lot, watched the "Opens in" line tick down second by second; opened an Active lot, watched "Closes in" tick down; waited for the Active → Closing flip ~10m before close to confirm the pill recolors and the live region announces.
 
 ### Decisions
 - **D021** — Faithful state machine: `auctionPhase` derived from `auctionStatus`, countdown hook on VDP only, salvage tooltip swapped for inline help copy.
+
+### Lessons
+- **L002** — A time-shift offset must be frozen once, not recomputed per call. Tests that pin both inputs won't catch this; you need a regression that exercises the default-arguments path with the wall clock moving.
 
 ---
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   ACTIVE_WINDOW_MS,
   CLOSING_WINDOW_MS,
@@ -170,5 +170,46 @@ describe('formatCountdown', () => {
     expect(
       formatCountdown(2 * 86400_000 + 4 * 3600_000 + 12 * 60_000 + 7_000),
     ).toBe('2d 4h 12m');
+  });
+});
+
+// Regression block for the Phase 8 countdown bug: `shiftAuctionStart` used
+// to compute its offset against a fresh `Date.now()` per call, which made
+// the shifted target drift forward in lockstep with the wall clock — every
+// `msUntil(shiftedStart)` came back as a constant and the VDP countdown
+// looked frozen. The fix freezes the shift baseline at module load
+// (SESSION_NOW_MS); tests still pass `now` explicitly and exercise the
+// override path. These tests exercise the *no-`now`* path, since the bug
+// only manifested there.
+describe('shift baseline is frozen at module load (countdown regression)', () => {
+  it('shiftAuctionStart() with no `now` is stable as the wall clock advances', () => {
+    const iso = '2026-04-05T13:00:00Z';
+    vi.useFakeTimers();
+    try {
+      const first = shiftAuctionStart(iso);
+      vi.advanceTimersByTime(60 * 60_000);
+      const second = shiftAuctionStart(iso);
+      expect(second).toBe(first);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('msUntil(nextTransitionIso()) decreases by elapsed wall-clock', () => {
+    // Anchor + 3d guarantees `upcoming` status regardless of where
+    // SESSION_NOW_MS landed at test-file load; the lot won't tick into
+    // active inside the 60s of fake-clock advance.
+    const iso = '2026-04-08T12:00:00Z';
+    vi.useFakeTimers();
+    try {
+      const target = nextTransitionIso(iso);
+      expect(target).not.toBeNull();
+      const before = msUntil(target!);
+      vi.advanceTimersByTime(60_000);
+      const after = msUntil(target!);
+      expect(after).toBe(before - 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
