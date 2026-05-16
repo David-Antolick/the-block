@@ -6,19 +6,52 @@
 // Status labels use the same lowercase-union convention as `FloorStatus` in
 // bidding.ts so consumers can `switch` on a known set of strings.
 
+import { readJSON, writeJSON } from './storage';
+
 // Anchor at the center of the dataset's time-cluster (per D006). Anchored in
 // UTC explicitly (see D014) so the shift offset is the same in every timezone.
 const DATASET_ANCHOR_MS = Date.UTC(2026, 3, 5, 12, 0, 0);
 
-// Captured once at module load. The shift is a *one-time* anchor adjustment
-// — picking the dataset's distribution-of-times against today's wall clock,
-// then letting real time naturally advance from that baseline. (L###:
-// computing the offset against a fresh `Date.now()` per-call defeats the
-// shift — the target moves forward in lockstep with the wall clock, so
+// How long a persisted session anchor stays valid before we re-capture. 24h
+// is long enough that "come back after lunch / overnight" feels continuous
+// (countdowns pick up where they left off, lots that were Active stay
+// Active or roll into Closing → Ended on the real wall clock); short enough
+// that "come back next week" gets a fresh demo distribution rather than a
+// grid that's entirely Ended.
+const SESSION_ANCHOR_TTL_MS = 24 * 60 * 60 * 1000;
+const SESSION_ANCHOR_KEY = 'session-anchor:v1';
+
+interface PersistedSessionAnchor {
+  capturedAt: number;
+}
+
+// The session-anchor baseline that the shift is computed against. Persisted
+// to localStorage so a full page reload doesn't reset the demo clock — a
+// countdown sitting at "Closes in 1m 30s" before reload should pick up close
+// to where it left off afterward, not jump back to its initial value because
+// the shift re-anchored to a fresh `Date.now()`. (L002: computing the
+// offset against a fresh `Date.now()` per-call defeats the shift — the
+// target moves forward in lockstep with the wall clock, so
 // `msUntil(shiftedStart) === parse(iso) - anchor` becomes constant and
 // `auctionStatus` / countdowns never advance. Tests pass `now` explicitly
 // so they exercise the override path, which is still per-call.)
-const SESSION_NOW_MS = Date.now();
+function resolveSessionAnchor(): number {
+  const now = Date.now();
+  const stored = readJSON<PersistedSessionAnchor | null>(SESSION_ANCHOR_KEY, null);
+  if (
+    stored != null &&
+    typeof stored.capturedAt === 'number' &&
+    Number.isFinite(stored.capturedAt) &&
+    now - stored.capturedAt < SESSION_ANCHOR_TTL_MS &&
+    stored.capturedAt <= now
+  ) {
+    return stored.capturedAt;
+  }
+  writeJSON<PersistedSessionAnchor>(SESSION_ANCHOR_KEY, { capturedAt: now });
+  return now;
+}
+
+const SESSION_NOW_MS = resolveSessionAnchor();
 
 /**
  * How long after `auction_start` a lot is considered "Active". Picked at 6h
