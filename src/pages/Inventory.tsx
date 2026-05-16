@@ -1,33 +1,209 @@
-// Phase 4 stub. Replaced wholesale in Phase 5 by the real grid + filter rail.
-// Right now it just lists vehicles as links so the router can be smoke-tested
-// and a human can click through to a VDP.
+// Inventory grid — desktop sidebar + grid, mobile filters-button + grid.
+// Owns filter state (component-local per I4 — no URL params) and sort state.
+// Subscribes to the full bids map (`useBids`) so the price-range filter and
+// "Current bid" sort respect user-placed bids, not just the dataset seed.
+//
+// Default filters (`DEFAULT_FILTER_STATE`) hide salvage and hide ended lots —
+// the trust thesis is reflected in what loads first. Both are surfaced as
+// chips users can clear.
 
-import { Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import VehicleCard from '../components/VehicleCard';
+import FilterRail from '../components/FilterRail';
+import {
+  DEFAULT_FILTER_STATE,
+  applyFilters,
+  enumerateActiveFilters,
+  type FilterState,
+} from '../components/filter-rail-state';
 import { VEHICLES } from '../data/vehicles';
+import { useBids } from '../state/bid-context';
+import { displayedCurrentBid } from '../lib/bidding';
+import { ACTIVE_WINDOW_MS, shiftAuctionStart } from '../lib/time';
+import type { Vehicle } from '../types/vehicle';
+import type { BidsByVehicle } from '../state/bid-context';
+
+type SortKey =
+  | 'ending_soonest'
+  | 'year_newest'
+  | 'price_low'
+  | 'price_high'
+  | 'mileage_low'
+  | 'condition_high';
+
+const SORT_OPTIONS: readonly { value: SortKey; label: string }[] = [
+  { value: 'ending_soonest', label: 'Ending soonest' },
+  { value: 'year_newest', label: 'Year: newest' },
+  { value: 'price_low', label: 'Price: low to high' },
+  { value: 'price_high', label: 'Price: high to low' },
+  { value: 'mileage_low', label: 'Mileage: lowest' },
+  { value: 'condition_high', label: 'Condition: highest' },
+];
+
+function closeTimeMs(vehicle: Vehicle): number {
+  return new Date(shiftAuctionStart(vehicle.auction_start)).getTime() + ACTIVE_WINDOW_MS;
+}
+
+function sortVehicles(
+  vehicles: readonly Vehicle[],
+  key: SortKey,
+  bidsByVehicle: BidsByVehicle,
+): readonly Vehicle[] {
+  const copy = [...vehicles];
+
+  switch (key) {
+    case 'ending_soonest': {
+      // Lots still closeable (close > now) sort ascending by close. Lots
+      // already past their close go to the bottom, ordered most-recently-
+      // ended first — so an opted-in "show ended" view leads with the
+      // freshest dead lots, not stale ones.
+      const now = Date.now();
+      return copy.sort((a, b) => {
+        const ca = closeTimeMs(a);
+        const cb = closeTimeMs(b);
+        const aActive = ca > now;
+        const bActive = cb > now;
+        if (aActive && !bActive) return -1;
+        if (!aActive && bActive) return 1;
+        return aActive ? ca - cb : cb - ca;
+      });
+    }
+    case 'year_newest':
+      return copy.sort((a, b) => b.year - a.year);
+    case 'price_low':
+      return copy.sort(
+        (a, b) =>
+          displayedCurrentBid(a, bidsByVehicle[a.id] ?? []) -
+          displayedCurrentBid(b, bidsByVehicle[b.id] ?? []),
+      );
+    case 'price_high':
+      return copy.sort(
+        (a, b) =>
+          displayedCurrentBid(b, bidsByVehicle[b.id] ?? []) -
+          displayedCurrentBid(a, bidsByVehicle[a.id] ?? []),
+      );
+    case 'mileage_low':
+      return copy.sort((a, b) => a.odometer_km - b.odometer_km);
+    case 'condition_high':
+      return copy.sort((a, b) => b.condition_grade - a.condition_grade);
+  }
+}
 
 export default function Inventory() {
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTER_STATE);
+  const [sortKey, setSortKey] = useState<SortKey>('ending_soonest');
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const bidsByVehicle = useBids();
+
+  const filteredSorted = useMemo(
+    () => sortVehicles(applyFilters(VEHICLES, filters, bidsByVehicle), sortKey, bidsByVehicle),
+    [filters, sortKey, bidsByVehicle],
+  );
+
+  const chips = useMemo(() => enumerateActiveFilters(filters), [filters]);
+
+  function resetFilters() {
+    setFilters(DEFAULT_FILTER_STATE);
+  }
+
   return (
-    <section className="mx-auto max-w-5xl px-6 py-8">
-      <h2 className="text-xl font-semibold tracking-tight">Inventory</h2>
-      <p className="mt-1 text-sm text-zinc-600">
-        {VEHICLES.length} lots in the dataset. Phase 5 will replace this stub with the
-        filterable grid.
-      </p>
-      <ul className="mt-6 grid gap-2 sm:grid-cols-2">
-        {VEHICLES.slice(0, 20).map((v) => (
-          <li key={v.id}>
-            <Link
-              to={`/vehicle/${v.id}`}
-              className="block rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm hover:border-zinc-400"
+    <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight text-zinc-900">Inventory</h2>
+          <p className="text-sm text-zinc-600">
+            {filteredSorted.length} of {VEHICLES.length} lots
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setMobileFiltersOpen(true)}
+            className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 lg:hidden"
+          >
+            Filters{chips.length > 0 && ` (${chips.length})`}
+          </button>
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-zinc-600">Sort</span>
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <span className="font-medium">
-                {v.year} {v.make} {v.model}
-              </span>
-              <span className="ml-2 text-zinc-500">lot {v.lot}</span>
-            </Link>
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {chips.length > 0 && (
+        <ul className="mb-4 flex flex-wrap gap-2">
+          {chips.map((chip) => (
+            <li key={chip.key}>
+              <button
+                type="button"
+                onClick={() => setFilters(chip.clear(filters))}
+                className="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50"
+              >
+                <span>{chip.label}</span>
+                <span aria-hidden="true" className="text-zinc-400">
+                  ×
+                </span>
+                <span className="sr-only">Remove filter</span>
+              </button>
+            </li>
+          ))}
+          <li>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex items-center rounded-full px-2.5 py-1 text-xs text-blue-700 underline hover:text-blue-900"
+            >
+              Reset all
+            </button>
           </li>
-        ))}
-      </ul>
+        </ul>
+      )}
+
+      <div className="flex gap-6">
+        <FilterRail
+          vehicles={VEHICLES}
+          value={filters}
+          onChange={setFilters}
+          isOpen={mobileFiltersOpen}
+          onClose={() => setMobileFiltersOpen(false)}
+        />
+
+        <div className="min-w-0 flex-1">
+          {filteredSorted.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-10 text-center">
+              <p className="text-sm font-medium text-zinc-700">No lots match these filters.</p>
+              <p className="mt-1 text-sm text-zinc-500">
+                Try clearing a filter or widening the price range.
+              </p>
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="mt-4 rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white hover:bg-zinc-700"
+              >
+                Reset filters
+              </button>
+            </div>
+          ) : (
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {filteredSorted.map((v) => (
+                <li key={v.id}>
+                  <VehicleCard vehicle={v} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

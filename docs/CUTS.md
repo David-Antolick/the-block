@@ -29,6 +29,7 @@ Tags:
 - **Saved-search presets** — `deferred` — Useful for power users; lower-leverage than per-card comp indicators.
 
 ### Polish / quality items intentionally bounded
+- **URL-state filters (`useSearchParams`)** — `time` — Per D018. Component state covers every demo path; URL plumbing (serialize, parse-validate, prune defaults, back-button) is real work and not on the trust-thesis critical path. Refactor path annotated in `src/components/filter-rail-state.ts`.
 - **End-to-end (Playwright) tests** — `time` — Bid-validator unit tests cover the load-bearing logic; component tests beyond that are gravy. E2E is a nice-to-have I'd add in production.
 - **Component tests for cards, filters, bid panel** — `time` — Worth doing if a stretch ships fast; not the headline.
 - **Image lightbox / pan-zoom on the gallery** — `time` — Thumbnail + main with arrow keys is the floor. Lightbox is a polish layer.

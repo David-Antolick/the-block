@@ -4,6 +4,34 @@ All notable changes to "The Block." Reverse chronological — most recent at top
 
 ---
 
+## [2026-05-16] Phase 5 — Inventory grid + filter rail + sort
+
+### Added
+- **`src/components/VehicleCard.tsx`** — clickable `<Link>` card (whole card → VDP). Hero image with lazy loading + alt = `"{year} {make} {model}"`. Title-brand badge pinned top-left of the image: red for `salvage`, amber for `rebuilt`, hidden for `clean`. Auction-status pill top-right ("Upcoming" / "Active" / "Ended" — no "Closing" yet; reserved for Stretch B). Title + trim + lot, condition-grade chip, odometer / body / location dl, and a current-bid block routed through `formatCurrency(displayedCurrentBid(vehicle, useBidsFor(vehicle.id)))`. Floor copy is "Floor Met" / "Floor Not Yet Met" only when `reserve_price != null` — the reserve number is never rendered (per CLAUDE.md + D007). `<SmartPriceSlot />` placeholder bottom-right of the price block holds visual rhythm for the Phase 7 (Stretch A) badge.
+- **`src/components/FilterRail.tsx`** — dual-surface filter rail. Desktop (`lg+`) renders as a sticky sidebar; mobile renders a fixed-position bottom-sheet overlay with backdrop + Escape-to-close + Done button (per I5 — no focus-trap library). State is owned by the page and passed via `value` / `onChange`. Facet values (makes, body styles, fuels, drivetrains) are derived from the inventory at render via `useMemo`, so the rail tracks the dataset rather than enumerating statically. Native `<label>`-wrapped checkboxes throughout; price range uses paired `<input type="number">`, condition grade uses `<input type="range">` (0–5, step 0.5).
+- **`src/components/filter-rail-state.ts`** — non-component sibling holding `FilterState`, `DEFAULT_FILTER_STATE`, `ALL_TITLE_STATUSES`, `ALL_AUCTION_STATUSES`, `applyFilters(vehicles, state, bidsByVehicle)`, and `enumerateActiveFilters(state)`. Split for the same `react-refresh/only-export-components` reason as D016 / L001. `applyFilters` uses `displayedCurrentBid(...)` for the price-range filter so the filter and the card never disagree on the number being filtered against.
+- **`src/pages/Inventory.tsx`** — replaces the Phase 4 stub wholesale. Owns `FilterState` + `SortKey` + mobile-rail-open state, subscribes to `useBids()`, derives `filteredSorted` via `useMemo`. Renders header (count, mobile "Filters" button with chip count, sort `<select>`), active-filter chips (clickable `×` per chip, "Reset all" link), `<FilterRail>` sidebar + grid (1 / 2 / 3 columns at sm / xl breakpoints), and an empty state with "Reset filters" CTA. Sort options: Ending soonest (default), Year newest, Price low / high, Mileage lowest, Condition highest. The "Ending soonest" comparator buckets active+upcoming (close > now) ahead of ended and orders within each bucket: ascending for live lots, descending for ended (so opted-in "show ended" leads with freshly-dead lots, not stale ones).
+- **`src/components/filter-rail-state.test.ts`** — 23 cases covering `applyFilters` (empty-array = no-filter, multi-select AND semantics, default salvage/ended omissions, opt-in inclusion, `displayedCurrentBid` integration on the price filter, min/max bounds, condition threshold, case-insensitive search across make / model / trim / lot, whitespace-only search treated as empty) and `enumerateActiveFilters` (no chips on default, search chip uses trimmed query, one chip per multi-select item, default-deviation chips in both directions for title + auction status, currency-formatted price chips, `chip.clear()` reverses its own effect without touching other filters). Anchor-relative ISOs keep auction-status assertions clear of the 6h boundary so the millisecond drift inside `auctionStatus`'s two `Date.now()` calls doesn't flake tests.
+
+### Changed
+- **`src/components/VehicleCard.tsx`** — `STATUS_LABEL` and `STATUS_PILL_CLASS` now key off the exported `AuctionStatus` union from `src/lib/time.ts` instead of re-declaring the literal union inline. If a future variant lands in `time.ts` (e.g. Stretch B's "closing"), the card will fail to compile until the records are updated — the source of truth lives in one place.
+
+### Verified
+- `npm run lint` — clean.
+- `npm run build` — zero TS errors. Bundle 488 kB JS / 111 kB gzip (+17 kB JS over Phase 4 — the new components and filter logic).
+- `npm test -- --run` — 55 passed (32 prior + 23 in the new filter-rail-state suite).
+- Default view rendered count: 56 lots (51 upcoming + 9 active − salvage overlap, against today's clock and the 6h `ACTIVE_WINDOW_MS`). Mix flagged for Phase 9 review per I2.
+- Grep for `\$\{` / `'\$'` in `src/**/*.tsx` — only matches are template literals for image alt, route paths, class names, and chip-count display. No inline currency.
+
+### Decisions
+- **D017** — Default inventory filters hide salvage titles and ended lots; chips surface both omissions.
+- **D018** — Inventory filter state lives in component state (`useState`), not URL params; URL-state filters logged as a `time` cut.
+
+### Cuts
+- **URL-state filters** — `time` (CUTS.md, polish section).
+
+---
+
 ## [2026-05-16] Phase 4 — App shell, routing, BidContext
 
 ### Added
