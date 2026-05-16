@@ -54,11 +54,16 @@ function resolveSessionAnchor(): number {
 const SESSION_NOW_MS = resolveSessionAnchor();
 
 /**
- * How long after `auction_start` a lot is considered "Active". Picked at 6h
- * (per I2 in the build plan) so the inventory has enough live lots to feel
- * alive without making "Ended" a rarity. Tune in Phase 9 if the mix is off.
+ * How long after `auction_start` a lot is considered "Active". Tuned in
+ * Phase 9 (D023) from the initial 6h to 24h after the mix sanity-check —
+ * the dataset clusters `auction_start` values in ~6h slots with gaps, and
+ * the 6h window only caught 9 Active lots at the session anchor (below
+ * PLAN.md's 10–30 target). 24h reaches ~29 Active. The Closing pill
+ * (`CLOSING_WINDOW_MS`, below) keeps the urgency-tail signal correct
+ * regardless of the outer window, so the wider window doesn't blunt the
+ * faithful-state-machine stretch.
  */
-export const ACTIVE_WINDOW_MS = 6 * 60 * 60 * 1000;
+export const ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Tail of the Active window during which the lot is re-labelled "Closing"

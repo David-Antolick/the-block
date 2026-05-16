@@ -31,7 +31,8 @@ Tags:
 ### Polish / quality items intentionally bounded
 - **URL-state filters (`useSearchParams`)** — `time` — Per D018. Component state covers every demo path; URL plumbing (serialize, parse-validate, prune defaults, back-button) is real work and not on the trust-thesis critical path. Refactor path annotated in `src/components/filter-rail-state.ts`.
 - **End-to-end (Playwright) tests** — `time` — Bid-validator unit tests cover the load-bearing logic; component tests beyond that are gravy. E2E is a nice-to-have I'd add in production.
-- **Component tests for cards, filters, bid panel** — `time` — Worth doing if a stretch ships fast; not the headline.
+- **Component tests for cards, filters, bid panel** — *partially closed in Phase 9.* BidPanel, SmartPriceBadge, VehicleCard, and FilterRail-state all have component tests now (104 tests across 7 files). Remaining gaps — ImageGallery keyboard nav, CompPanel rendering, full Inventory-page integration — are still `time`-cut.
+- **SmartPriceBadge tooltip on card grid is hover-only** — `time` — Inside a card link, the badge is decorative and drops its tab stop so the parent link owns keyboard focus. Keyboard users get the comp data via card → VDP → CompPanel (a full-detail panel with the same low/median/high + the three comps). The badge's `aria-label` carries the band description so screen readers always announce it. Adding a focus tooltip on the card variant would add ~200 tab stops to the grid for a path that's already accessible. The VDP badge (`interactive=true`) does surface the tooltip on focus.
 - **Image lightbox / pan-zoom on the gallery** — `time` — Thumbnail + main with arrow keys is the floor. Lightbox is a polish layer.
 - **Internationalization beyond the currency demo** — `scope` — `formatCurrency()` proves the architecture; full i18n is out of scope.
 - **Persistent user identity across browsers** — `scope` — Auth-adjacent; not required.

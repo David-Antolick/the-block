@@ -4,6 +4,38 @@ All notable changes to "The Block." Reverse chronological — most recent at top
 
 ---
 
+## [2026-05-16] Phase 9 — Sanity sweep, component coverage, Active-window retune (`test/phase-9-bug-bash-component-coverage`)
+
+Phase 9 from `docs/PLAN.md`: smoke the build top-to-bottom, fill the two component-test gaps the prior phases deferred (SmartPriceBadge + VehicleCard), and run the Active-window mix sanity check the plan called out as a Phase 9 deliverable. Net code change is small — one constant in `time.ts` and a test-fixture safety bump — but two test files and three doc entries land here, so the phase reads as "audit + fill in gaps" rather than "rewrite."
+
+### Audit findings (no code change required)
+- **Bidding validator** (`src/lib/bidding.ts`) — 15-case test surface covers all rejection reasons including D011's inclusive buy-now ceiling. Verified the order of `validateBid` checks (non-finite → non-integer → non-positive → below-min → above-buy-now) produces the most informative error per input. Dataset audit confirms no lot has `buy_now_price < current_bid + BID_INCREMENT`, so the theoretical "Buy Now button rejected as below-min" edge can't fire against the curated data.
+- **Time helpers** (`src/lib/time.ts`) — `auctionStatus` / `auctionPhase` boundaries (inclusive at start, exclusive at end, Closing inclusive at threshold) are correct and covered. L002 regression block guards the frozen-baseline fix under `vi.useFakeTimers`.
+- **Currency hygiene** — grepped the source for inline `${value}` patterns in JSX; every template-literal hit is `className` / `key` / `aria-label`, none is a price interpolation. CLAUDE.md's centralized-formatting invariant holds.
+- **Console / TODO / `any`** — zero `console.*` calls in source; zero `TODO`/`FIXME`; zero `any` types outside of comments.
+- **Dataset distribution** — 200 vehicles, 39 with Buy Now, 14 salvage, 16 rebuilt. `current_bid` and `starting_bid` are uniformly `% 100 === 0`, so no Buy-Now math edges. `bid_count === 0` for 112 lots → `displayedCurrentBid` headlines `current_bid` for those without divide-by-zero worries (dataset never seeds `current_bid = 0`).
+
+### Changed
+- **`src/lib/time.ts`** — `ACTIVE_WINDOW_MS` bumped from `6h` to `24h`. At the session anchor, the 6h window produced **9 Active / 51 Upcoming / 140 Ended** — below PLAN.md's 10–30 Active target. The dataset clusters `auction_start` values in ~6h slots with a 6h gap immediately before the anchor (histogram from the audit: 8 / 0 / 9 / 14 lots in the four 6h buckets back from anchor), so widening to 12h was vacuous; 18h reached 14; **24h reached 29** Active lots, mid-target. The Closing pill (`CLOSING_WINDOW_MS = 10m`) is unchanged, so the urgency-tail signal still reads correctly. See **D023**.
+- **`src/components/filter-rail-state.test.ts`** — Test-fixture ISOs widened from anchor±24h to anchor±48h. With the new 24h window, the previous −24h fixture sat exactly on the active-end boundary (passing only because `Date.now() > SESSION_NOW_MS` by a few ms at test-run time); widening to 48h makes the test robust against further window tweaks.
+
+### Added — component test coverage (Phase 9a)
+- **`src/components/SmartPriceBadge.test.tsx`** — 7 cases over three concerns. (a) `unknown` verdicts and `null` bands render nothing (preserves the "no signal, no noise" contract). (b) Verdict → color mapping for `below` / `fair` / `above` asserts the Tailwind ring class so a refactor of `VERDICT_CLASS` can't silently swap colors and pass tests. (c) Interactive badges are tab-reachable with `aria-describedby` linking to a `role="tooltip"` element carrying the band explanation; decorative variant (inside a card link) drops the tab stop.
+- **`src/components/VehicleCard.test.tsx`** — 5 cases over two trust-thesis invariants. (a) Salvage and rebuilt title brands surface a corner badge with the right `role="note"` accessible name; clean titles render no brand badge. (b) Headline current bid is rendered via `formatCurrency()` (asserts the exact locale-formatted CAD output to catch any future inline `${value}` slip) and reflects `displayedCurrentBid` — a user-placed bid commits through the harness's `usePlaceBid` and the card re-renders with the new headline (verifies the card subscribes to BidContext, not just the dataset seed).
+
+### Cuts (logged to `docs/CUTS.md`)
+- **SmartPriceBadge tooltip on card grid is hover-only** — keyboard users navigating the inventory grid don't see the comp band explanation on focus. The `aria-label` carries the full description so screen readers still get it, and the card link → VDP → CompPanel path gives the same data in full detail. Adding a focus surface to the decorative card-grid variant would mean a second tab stop per card (≈200 extra) for a feature that's already accessible through the link.
+
+### Verified
+- `npm run lint` — clean.
+- `npm test -- --run` — **104 passed** (was 92; +12 from the two new component test files; existing 92 unchanged in count and behavior after the window bump and fixture-offset widening).
+- `npm run build` — zero TS errors. Bundle 507 kB JS / 116 kB gzip — unchanged.
+
+### Decisions
+- **D023** — Bump `ACTIVE_WINDOW_MS` from 6h to 24h after the Phase 9 mix sanity-check. Frames the demo-honesty trade-off against OPENLANE's 45M timed format and the README-disclosure follow-on.
+
+---
+
 ## [2026-05-16] Phase 8.3 — Persist the session anchor across reloads (`feature/state-machine`)
 
 Follow-on to **L002**: freezing the shift baseline made countdowns tick during a session, but every full page reload re-anchored against a fresh `Date.now()` and snapped the countdown back to its initial value. **D022** captures the persistence design call (storage tier, TTL, validation depth, eager-vs-lazy init).
