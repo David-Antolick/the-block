@@ -9,3 +9,6 @@ node_modules/
 docs/PLAN.md
 docs/CONTEXT.md
 .private/
+
+# Claude Code local settings (user-specific; the skills themselves are committed)
+.claude/settings.local.json
