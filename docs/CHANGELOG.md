@@ -4,6 +4,32 @@ All notable changes to "The Block." Reverse chronological — most recent at top
 
 ---
 
+## [2026-05-16] Phase 7 — Stretch A · Smart Price comps (`feature/smart-price`)
+
+Cross-links **D008** (stretch decision) and **D020** (verdict/band design micro-decisions). First stretch branch; merges to `main` after M7 verification.
+
+### Added
+- **`src/lib/comps.ts`** — pure-function comp engine matching the bidding-module discipline (D012). `findComps(target, pool)` filters by same make+model, `target.year ± YEAR_WINDOW` (1), excludes the target by id, then sorts by absolute mileage distance and truncates to `COMP_COUNT` (3). `compPriceBand(target, pool, bidsByVehicle)` runs `findComps` and reads each comp's `displayedCurrentBid(...)` — user-placed bids on comps move the band the way they'd move any market signal. Returns `null` when no comps or every comp price ≤ 0. `smartPriceVerdict(price, band)` buckets the candidate against the band with inclusive boundaries (`'below' | 'fair' | 'above' | 'unknown'`). Median is `prices[floor(n/2)]` post-sort — exact for odd n, biased toward the higher value for even n; acknowledged in JSDoc + the panel footnote (I3).
+- **`src/lib/comps.test.ts`** — 16 cases. `findComps`: exclude-by-id, make/model match, year ±1 boundaries (in vs. out), mileage-ordering with mixed near/far, `COMP_COUNT` cap, empty-pool fallthrough. `compPriceBand`: null on no-comps, null on all-zero prices, low/median/high over real prices, user-bid on a comp reshapes the high. `smartPriceVerdict`: null band → unknown, zero price → unknown, strict-below, inclusive at low boundary, inclusive at high boundary, strict-above.
+- **`src/components/SmartPriceBadge.tsx`** — verdict pill (green / blue / red / gray) + `role="tooltip"` carrying the comp-set explanation (count · low · median · high). `tabIndex={0}` + `peer-focus:block` keeps the tooltip reachable for keyboard users — hover-only would fail the M7 accessibility floor. `size="sm"` for the card slot, `size="md"` for the VDP headline. `tooltipId` prop scopes `aria-describedby` so card-grid + VDP badges don't collide.
+- **`src/components/CompPanel.tsx`** — "Comparable lots" section on the VDP: low/median/high `<dl>`, three mini-cards linking to each comp's VDP (`{year} {make} {model}` · odometer + lot · `displayedCurrentBid` formatted). `useMemo` keyed on `[vehicle, bidsByVehicle]` so commits in either direction (target or comp) refresh the panel in one tick. Falls back to "No recent comps with active pricing…" when the band is null.
+
+### Changed
+- **`src/components/VehicleCard.tsx`** — dropped the `<SmartPriceSlot />` placeholder; renders the real `<SmartPriceBadge />` keyed on `compPriceBand(vehicle, VEHICLES, bidsByVehicle)`. Memo key matches the panel for consistency.
+- **`src/components/BidPanel.tsx`** — headline current bid now reads as a flex row with the SmartPriceBadge (`size="md"`) next to it. Same memo shape; the badge updates the instant a comp's bid commits.
+- **`src/pages/VehicleDetail.tsx`** — left column adds `<CompPanel />` between `ConditionSection` and `DealershipCard`, so the comp explanation lands directly under the condition signal that frames it.
+
+### Verified
+- `npm run lint` — clean.
+- `npm test -- --run` — 71 passed (55 prior + 16 in the new `comps.test.ts`).
+- `npm run build` — zero TS errors. Bundle 504 kB JS / 115 kB gzip (~+5 kB JS over Phase 6 — the comp lib + two components + the new VDP slot).
+- Spot-check: opened three VDPs by make/model density (Ram 1500, Mazda CX-5, BMW 5 Series); each rendered three comp mini-cards and a non-degenerate band. Verdict on a starting-bid-only lot resolves to `'below'` (price > 0 < band.low) per M7 expectation, never `'above'`.
+
+### Decisions
+- **D020** — Smart Price verdict uses inclusive band boundaries; band/verdict drop to `null`/`'unknown'` when the comp signal degenerates; consumers memoize on the whole `bidsByVehicle` map.
+
+---
+
 ## [2026-05-16] Phase 5 — Inventory grid + filter rail + sort
 
 ### Added
