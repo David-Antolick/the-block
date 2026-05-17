@@ -4,6 +4,8 @@ A wholesale-vehicle auction browse + bid prototype. 200 lots, 9 filter dimension
 
 ## How to run
 
+**Windows (PowerShell):**
+
 ```powershell
 git clone https://github.com/David-Antolick/the-block.git
 cd the-block
@@ -11,7 +13,16 @@ npm install
 npm run dev
 ```
 
-Opens at `http://127.0.0.1:5173/`. Use `127.0.0.1`, not `localhost` — on Windows the IPv6-first resolution adds ~2s per local request.
+**Linux / macOS (bash / zsh):**
+
+```bash
+git clone https://github.com/David-Antolick/the-block.git
+cd the-block
+npm install
+npm run dev
+```
+
+Opens at `http://127.0.0.1:5173/`. On Windows specifically, use `127.0.0.1` rather than `localhost` — IPv6-first resolution adds ~2s per local request there; everywhere else either works.
 
 Other scripts: `npm run build`, `npm run preview`, `npm test`, `npm test -- --run`, `npm run lint`.
 
