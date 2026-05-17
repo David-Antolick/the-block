@@ -1,16 +1,5 @@
-// Inventory filter rail. Two surfaces from one component:
-//   - desktop (lg+): sticky sidebar, always visible
-//   - mobile (<lg): hidden by default; the page renders a "Filters" button
-//     that flips `isOpen`, opening a fixed-position bottom-sheet overlay with
-//     a backdrop + close button (per I5 — no focus-trap library)
-//
-// State is owned by the page (I4: component state, no URL params) and passed
-// in via `value`/`onChange`. The page derives the filtered list from `value`
-// using `applyFilters` from `./filter-rail-state`.
-//
-// The `FilterState` shape, defaults, applier, and chip enumerator live in
-// `./filter-rail-state.ts` so this file stays component-only and React Refresh
-// HMR keeps working (same constraint as D016 / L001).
+// Inventory filter rail. Desktop sticky sidebar; mobile bottom-sheet overlay.
+// FilterState shape + applier live in ./filter-rail-state for HMR (D016, L001).
 
 import { useEffect, useMemo } from 'react';
 import type { BodyStyle, Drivetrain, FuelType, Vehicle } from '../types/vehicle';
@@ -28,19 +17,13 @@ interface Props {
   vehicles: readonly Vehicle[];
   value: FilterState;
   onChange: (next: FilterState) => void;
-  /** Mobile overlay open state. Ignored on desktop (rail is always visible). */
   isOpen: boolean;
   onClose: () => void;
 }
 
 export default function FilterRail({ vehicles, value, onChange, isOpen, onClose }: Props) {
-  // Facet values are derived from the inventory rather than enumerated
-  // statically — keeps the rail in sync with whatever the dataset actually
-  // contains, and degrades gracefully if a future make or body style appears.
   const facets = useMemo(() => deriveFacets(vehicles), [vehicles]);
 
-  // Close the mobile overlay on Escape. Best-effort accessibility floor (no
-  // focus trap per I5); a real implementation would also restore focus.
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: KeyboardEvent) => {
@@ -61,8 +44,6 @@ export default function FilterRail({ vehicles, value, onChange, isOpen, onClose 
 
   return (
     <>
-      {/* Desktop: sticky sidebar. Hidden below lg; the page renders the
-          mobile-open button. */}
       <aside
         aria-label="Filters"
         className="hidden lg:sticky lg:top-4 lg:block lg:max-h-[calc(100dvh-2rem)] lg:w-72 lg:shrink-0 lg:overflow-y-auto lg:rounded-lg lg:border lg:border-zinc-200 lg:bg-white lg:p-4"
@@ -70,8 +51,6 @@ export default function FilterRail({ vehicles, value, onChange, isOpen, onClose 
         {railContent}
       </aside>
 
-      {/* Mobile: bottom-sheet overlay. Tailwind doesn't gate keyboard reach
-          on `hidden`, so we also bail out of rendering when closed. */}
       {isOpen && (
         <div className="lg:hidden" role="dialog" aria-modal="true" aria-label="Filters">
           <button
@@ -98,8 +77,6 @@ export default function FilterRail({ vehicles, value, onChange, isOpen, onClose 
     </>
   );
 }
-
-// ─── Internals ─────────────────────────────────────────────────────────────
 
 interface Facets {
   makes: readonly string[];
@@ -295,10 +272,8 @@ function RailBody({ value, onChange, facets, onResetAll }: RailBodyProps) {
             })
           }
         />
-        {/* Inline explanation rather than a hover-only tooltip (D021): keyboard
-            users and first-time visitors both see it without discovery, and
-            the trust thesis (CLAUDE.md) is that the salvage exclusion is a
-            visible default, not a hidden one. */}
+        {/* Inline help rather than hover-only tooltip (D021) — trust thesis is
+            that the salvage default is visible, not hidden. */}
         <p className="mt-2 text-[11px] leading-snug text-zinc-500">
           Salvage lots are hidden by default. These vehicles carry a salvage
           title brand — warrant extra inspection and may not be financeable.

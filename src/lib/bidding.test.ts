@@ -8,8 +8,6 @@ import {
   validateBid,
 } from './bidding';
 
-// Minimal fixture — only the fields the bidding module reads. Cast to Vehicle
-// so tests stay focused on the math, not the dataset shape.
 function makeVehicle(overrides: Partial<Vehicle> = {}): Vehicle {
   return {
     id: 'test-id',

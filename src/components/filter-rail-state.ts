@@ -1,8 +1,5 @@
-// Non-component half of FilterRail: the `FilterState` shape, sensible
-// defaults, the filter applier, and the chip enumerator. Split out from
-// FilterRail.tsx so the component file keeps React Refresh HMR — same
-// `react-refresh/only-export-components` constraint that motivated the
-// BidContext split (D016, L001).
+// FilterState shape, defaults, applier, chip enumerator. Split from
+// FilterRail.tsx for HMR (D016, L001).
 
 import type {
   BodyStyle,
@@ -30,16 +27,11 @@ export interface FilterState {
   priceMax: number | null;
   minConditionGrade: number | null;
   auctionStatuses: readonly AuctionStatus[];
-  /** Smart Price verdict allow-list. Empty = no filter (show all, including
-   *  lots that have no comp signal). Non-empty narrows to the listed
-   *  verdicts; `'unknown'` lots fall out because no scored verdict matches. */
+  /** Empty = no filter. Non-empty narrows to listed verdicts; `'unknown'` lots drop out. */
   smartPriceVerdicts: readonly ScoredVerdict[];
 }
 
-// Defaults match the trust thesis (CLAUDE.md): salvage hidden until opted in;
-// ended hidden so the grid leads with lots a buyer can still act on. Smart
-// Price defaults to "no filter" — the badge already signals per-card; the
-// filter is for buyers who want to lead with comp-discounted lots.
+// Hide salvage + ended by default (D017). Smart Price defaults to no filter.
 export const DEFAULT_FILTER_STATE: FilterState = {
   search: '',
   makes: [],
@@ -60,16 +52,9 @@ export { SCORED_VERDICTS, VERDICT_LABEL };
 export type { ScoredVerdict };
 
 /**
- * Apply the filter state to the vehicle list. Headline price (used for the
- * price-range filter) is `displayedCurrentBid(v, bidsByVehicle[v.id])`, which
- * matches what the card itself shows — so the filter and the card never
- * disagree on the number being filtered against.
- *
- * `getBand` (optional) is a memoized comp-band lookup hoisted from the page;
- * when supplied, the Smart Price filter reuses the same cache the inventory
- * grid is reading from, so each vehicle's band is computed at most once per
- * `bidsByVehicle` change. Falls back to a fresh `compPriceBand(...)` call
- * when omitted (test paths, headless usage).
+ * Apply the filter state. Price-range uses `displayedCurrentBid(...)` to
+ * match what the card shows. `getBand` is an optional memoized lookup hoisted
+ * from the page; falls back to a fresh `compPriceBand` when omitted.
  */
 export function applyFilters(
   vehicles: readonly Vehicle[],
@@ -102,11 +87,8 @@ export function applyFilters(
       if (!haystack.includes(search)) return false;
     }
 
-    // Smart Price filter runs last because it's the most expensive (O(pool)
-    // per vehicle inside compPriceBand). Skipping it when nothing's selected
-    // keeps the default-view cost flat. Pool is the full `vehicles` arg so
-    // the verdict reflects the whole market, not just the currently-visible
-    // slice — filtering shouldn't move the comp band.
+    // Smart Price runs last — most expensive. Pool is the full `vehicles`
+    // arg so the verdict reflects the whole market, not just visible lots.
     if (state.smartPriceVerdicts.length > 0) {
       const band = getBand ? getBand(v) : compPriceBand(v, vehicles, bidsByVehicle);
       const verdict = smartPriceVerdict(price, band);
@@ -119,19 +101,14 @@ export function applyFilters(
 }
 
 export interface ActiveFilterChip {
-  /** Stable identity for React keys. */
   key: string;
-  /** User-facing label, e.g. "Make: Mazda" or "Min $10,000". */
   label: string;
-  /** Returns a new FilterState with this chip cleared. Page wires to onChange. */
   clear: (current: FilterState) => FilterState;
 }
 
 /**
- * Enumerate every filter currently narrowing the result set, including the
- * "default" omissions (salvage hidden, ended hidden) so users can see and
- * undo them. Order is stable: search first, then categorical multi-selects in
- * declaration order, then numeric ranges.
+ * Enumerate every filter narrowing the result set, including default
+ * omissions (salvage, ended) so users can see and undo them.
  */
 export function enumerateActiveFilters(state: FilterState): ActiveFilterChip[] {
   const chips: ActiveFilterChip[] = [];
@@ -184,9 +161,8 @@ export function enumerateActiveFilters(state: FilterState): ActiveFilterChip[] {
     });
   }
 
-  // Title-status: only chip when it deviates from the default. We surface
-  // both "Salvage included" (added to default) and "Hides rebuilt" (removed
-  // from default) so users can always see why a lot might be missing.
+  // Title status: chip when state deviates from default. Surfaces both
+  // "Salvage included" (added) and "Hides rebuilt" (removed).
   for (const ts of ALL_TITLE_STATUSES) {
     const inDefault = DEFAULT_FILTER_STATE.titleStatuses.includes(ts);
     const inState = state.titleStatuses.includes(ts);

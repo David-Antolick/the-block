@@ -1,10 +1,5 @@
-// VDP page. Integrates Agent A's left-column components (gallery, title block,
-// title-brand banner, spec table, condition section, dealership card) with
-// Agent B's right-column BidPanel. Two-column on lg+, stacked on smaller
-// screens. Right column is sticky on lg+ so the bid CTA stays visible while
-// the user scrolls through specs/condition/comps.
-//
-// Components are positioning-agnostic; this page owns the layout.
+// VDP page. Two-column on lg+ (gallery / specs / comps + sticky BidPanel);
+// stacked below that. Components are positioning-agnostic — layout lives here.
 
 import { Link, useParams } from 'react-router-dom';
 import { VEHICLES } from '../data/vehicles';

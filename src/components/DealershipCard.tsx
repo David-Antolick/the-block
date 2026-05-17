@@ -1,7 +1,5 @@
-// VDP "Selling Dealership" card. The dataset only carries the dealership name
-// and the vehicle's city/province — there's no rating, history report, or
-// contact info to render. Per CLAUDE.md's "never invent dataset fields" rule,
-// the card sticks to what's there and avoids fabricated trust signals.
+// VDP selling-dealership card. Sticks to dataset fields per CLAUDE.md's
+// "never invent dataset fields" rule — no fake ratings, history reports, etc.
 
 import type { Vehicle } from '../types/vehicle';
 

@@ -1,7 +1,5 @@
-// Domain types for the buyer-side OPENLANE prototype.
-// Field names mirror data/vehicles.json (snake_case) so the dataset can be
-// imported as `Vehicle[]` with no transformation. UI labels (e.g. "Floor Price"
-// for reserve_price) live in the display layer, not on the type.
+// Field names mirror data/vehicles.json (snake_case) so the dataset imports
+// as Vehicle[] with no transformation. UI labels live in the display layer.
 
 export type TitleStatus = 'clean' | 'salvage' | 'rebuilt';
 export type FuelType = 'gasoline' | 'hybrid' | 'electric' | 'diesel';
@@ -41,8 +39,6 @@ export interface Vehicle {
   bid_count: number;
 }
 
-// A buyer-placed bid persisted to localStorage. The dataset's `current_bid` is
-// the seed; user bids stack on top of it and are stored per-vehicle.
 export interface UserBid {
   amount: number;
   placedAt: string;

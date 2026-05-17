@@ -8,8 +8,6 @@ import {
   smartPriceVerdict,
 } from './comps';
 
-// Minimal-fields fixture — comps only reads id/make/model/year/odometer_km/current_bid.
-// Cast keeps tests focused on the math, not the dataset shape (mirrors bidding.test.ts).
 function makeVehicle(overrides: Partial<Vehicle> & { id: string }): Vehicle {
   return {
     make: 'Mazda',

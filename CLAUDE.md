@@ -60,7 +60,7 @@ Do not invent vocabulary that contradicts theirs. When in doubt, default to plai
 
 Dataset times cluster around April 2026; today is May 2026 — every lot would look "Ended." Challenge README explicitly allows normalization. Implementation in `src/lib/time.ts` (`shiftAuctionStart`, `auctionStatus`). Surface this in the README under "Notable Decisions."
 
-## Docs-maintenance discipline (D009)
+## Docs-maintenance discipline
 
 Keep these four docs current as you build. Doing so produces a coherent paper trail any reader can use to understand the project's evolution.
 

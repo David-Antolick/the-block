@@ -1,10 +1,5 @@
-// Inventory grid card. Per CLAUDE.md: title-brand badge prominent in the top
-// corner (red for salvage, amber for rebuilt, hidden for clean); headline price
-// uses `displayedCurrentBid(vehicle, userBidsForThisVehicle)` routed through
-// `formatCurrency()`; floor copy is "Floor Met" / "Floor Not Yet Met" only —
-// never the reserve number; auction-status pill via `auctionStatus()` labelled
-// "Upcoming" / "Active" / "Ended"; whole card is a `<Link>` to the VDP. The
-// SmartPriceBadge bottom-right of the price block carries the Phase 7 verdict.
+// Inventory grid card. Title-brand badge top-left (D021); headline price via
+// formatCurrency; floor copy is state-only, never the reserve number (D007).
 
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
@@ -20,17 +15,10 @@ import SmartPriceBadge from './SmartPriceBadge';
 
 interface Props {
   vehicle: Vehicle;
-  /** Comp band for this vehicle. When the Smart Price filter is active, the
-   *  Inventory page precomputes the full 200-lot map and threads it down so
-   *  the filter + grid share one pass. When the filter is off (the default),
-   *  no precompute happens and the card lazily computes its own — only ~50
-   *  cards render, so the work stays bounded. `null` = no comp signal;
-   *  `undefined` = "no precomputed value, fall back to internal compute." */
+  /** Comp band. `null` = no signal; `undefined` = no precompute, card computes its own. */
   band?: CompPriceBand | null | undefined;
 }
 
-// Pill copy is OPENLANE's lifecycle vocabulary (D007). Stretch B (D021)
-// promoted "Closing" to a first-class state alongside Upcoming/Active/Ended.
 const PHASE_LABEL: Record<AuctionPhase, string> = {
   upcoming: 'Upcoming',
   active: 'Active',
@@ -41,7 +29,6 @@ const PHASE_LABEL: Record<AuctionPhase, string> = {
 const PHASE_PILL_CLASS: Record<AuctionPhase, string> = {
   upcoming: 'bg-zinc-100 text-zinc-700 ring-1 ring-inset ring-zinc-200',
   active: 'bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200',
-  // Amber + pulse — "ending soon" signal the eye picks up in a grid sweep.
   closing:
     'bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-300 animate-pulse',
   ended: 'bg-zinc-200 text-zinc-600 ring-1 ring-inset ring-zinc-300',
@@ -50,9 +37,6 @@ const PHASE_PILL_CLASS: Record<AuctionPhase, string> = {
 function TitleBrandBadge({ status }: { status: Vehicle['title_status'] }) {
   if (status === 'clean') return null;
   const isSalvage = status === 'salvage';
-  // Top-left with an inline icon (D021) — corner is the buyer's pre-attentive
-  // scan target on a card grid, and the icon makes the brand readable before
-  // the text resolves at small sizes.
   return (
     <span
       role="note"
@@ -82,9 +66,7 @@ export default function VehicleCard({ vehicle, band: providedBand }: Props) {
   const floor = floorStatus(vehicle, userBids);
   const heroImage = vehicle.images[0];
   const heroAlt = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
-  // When the page hasn't precomputed (filter off path), fall back to a
-  // per-card memo. The conditional inside the memo keeps the compute out of
-  // the hot path when the page *did* hand us a band.
+  // Lazy fallback when the page hasn't precomputed (filter-off path).
   const fallbackBand = useMemo(
     () =>
       providedBand !== undefined ? null : compPriceBand(vehicle, VEHICLES, bidsByVehicle),

@@ -1,11 +1,9 @@
-// Pure-math bid logic. No React, no time, no auction-status awareness, no DOM.
-// Per D012, every check here is over `(amount, vehicle, userBids)` only —
-// callers (UI) are responsible for gating Place-Bid on auction status, etc.
+// Pure-math bid logic. No React, no time, no auction-status awareness, no DOM
+// (D012). UI callers gate Place Bid on auction status before calling this.
 
 import type { Vehicle, UserBid } from '../types/vehicle';
 import { formatCurrency } from './format';
 
-/** Minimum dollar step between consecutive valid bids. */
 export const BID_INCREMENT = 100;
 
 export type BidRejectionReason =
@@ -21,11 +19,7 @@ export type ValidationResult =
 
 export type FloorStatus = 'met' | 'not_met' | 'no_floor';
 
-/**
- * Highest bid currently in effect: the larger of the seeded dataset bid and any
- * user-placed bid stack. Returns 0 only if the dataset itself has no current_bid
- * and the user hasn't bid (shouldn't happen for the curated dataset).
- */
+/** Highest bid in effect — max of dataset seed and any user bids. */
 export function displayedCurrentBid(vehicle: Vehicle, userBids: readonly UserBid[]): number {
   let max = vehicle.current_bid;
   for (const b of userBids) {
@@ -34,34 +28,20 @@ export function displayedCurrentBid(vehicle: Vehicle, userBids: readonly UserBid
   return max;
 }
 
-/**
- * Smallest amount that would clear the next-bid bar. Equal to starting_bid for
- * a lot with no activity, otherwise displayed-current + BID_INCREMENT.
- */
+/** Smallest amount that clears the next-bid bar. */
 export function minNextBid(vehicle: Vehicle, userBids: readonly UserBid[]): number {
   const displayed = displayedCurrentBid(vehicle, userBids);
   if (displayed <= 0) return vehicle.starting_bid;
   return displayed + BID_INCREMENT;
 }
 
-/**
- * Three-state floor (reserve) status. Returns 'no_floor' if the lot has no
- * reserve_price set — per OPENLANE convention, the UI never reveals the floor
- * number itself, only whether it's been cleared. Named without an `is` prefix
- * because the return is a union, not a boolean (an `isX` name would invite
- * truthy-checks that are wrong for two of the three states).
- */
+/** Floor (reserve) status. UI never surfaces the reserve number itself (D007). */
 export function floorStatus(vehicle: Vehicle, userBids: readonly UserBid[]): FloorStatus {
   if (vehicle.reserve_price == null) return 'no_floor';
   return displayedCurrentBid(vehicle, userBids) >= vehicle.reserve_price ? 'met' : 'not_met';
 }
 
-/**
- * Validate a prospective bid amount against the dataset + user bid stack.
- * Returns ok:true or a typed rejection with a user-presentable message. Bid
- * amounts must be positive integers; the upper bound (buy_now_price) is
- * inclusive (D011).
- */
+/** Validate a prospective bid. Buy-now ceiling is inclusive (D011). */
 export function validateBid(
   amount: number,
   vehicle: Vehicle,

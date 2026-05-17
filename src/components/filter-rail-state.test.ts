@@ -11,12 +11,14 @@ import {
 } from './filter-rail-state';
 
 // The dataset anchor lives in src/lib/time.ts as Date.UTC(2026, 3, 5, 12, 0, 0).
-// Auction times relative to it shift to "now ± same offset", so picking values
-// well clear of the 6h ACTIVE_WINDOW_MS boundary keeps bucketing stable across
-// the millisecond drift inside auctionStatus (two Date.now() calls per check).
+// Auction times relative to it shift to "now ± same offset" (where now is
+// SESSION_NOW_MS, captured at module load before this test runs). Picking
+// values 48h either side of the anchor keeps every test case comfortably
+// outside ACTIVE_WINDOW_MS (currently 24h — D023) so a future window tweak
+// doesn't flip a bucket here.
 const ANCHOR_ISO = '2026-04-05T12:00:00';            // shifts to ~now → active
-const ENDED_ISO = '2026-04-04T12:00:00';             // anchor − 24h → ended
-const UPCOMING_ISO = '2026-04-06T12:00:00';          // anchor + 24h → upcoming
+const ENDED_ISO = '2026-04-03T12:00:00';             // anchor − 48h → ended
+const UPCOMING_ISO = '2026-04-07T12:00:00';          // anchor + 48h → upcoming
 
 function makeVehicle(overrides: Partial<Vehicle> = {}): Vehicle {
   return {

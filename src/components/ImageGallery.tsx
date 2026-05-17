@@ -1,14 +1,12 @@
-// VDP image gallery — main image + thumbnail strip. Keyboard-navigable per
-// PLAN.md accessibility floor: arrow keys cycle the active image when the
-// gallery wrapper has focus; thumbnails are real buttons (Tab-reachable,
-// Enter/Space-activatable), each carrying `aria-current` on the active one.
-// Falls back to a placeholder block when a vehicle has no images.
+// VDP image gallery. Arrow keys cycle when wrapper is focused; thumbnails
+// are real buttons (Tab-reachable, Enter/Space-activatable). `safeIndex` is
+// derived on read rather than via useEffect → setIndex (same pattern as
+// useCountdown — avoids `react-hooks/set-state-in-effect`).
 
 import { useRef, useState } from 'react';
 
 interface Props {
   images: string[];
-  /** Alt-text base (e.g. "2025 Mazda CX-5"). The gallery appends "image N of M". */
   altBase: string;
 }
 
@@ -17,10 +15,6 @@ export default function ImageGallery({ images, altBase }: Props) {
   const thumbStripRef = useRef<HTMLDivElement | null>(null);
   const count = images.length;
 
-  // Clamp the displayed index on read rather than via `useEffect → setIndex`
-  // (which violates `react-hooks/set-state-in-effect` and triggers a cascading
-  // re-render). The stored `index` self-heals on the next interaction because
-  // `go()` does `(current + delta + count) % count`.
   const safeIndex = count > 0 ? Math.min(index, count - 1) : 0;
 
   if (count === 0) {

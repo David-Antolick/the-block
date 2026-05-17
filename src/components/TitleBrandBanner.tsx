@@ -1,9 +1,5 @@
-// Full-width title-brand banner under the VDP title block. Renders nothing for
-// clean titles. Per CLAUDE.md the title-brand prominence is one of the two
-// trust-thesis pillars — this banner is the VDP counterpart to the corner
-// badge on inventory cards (VehicleCard.tsx). Stretch B (D008) may beef this
-// up with an icon and additional copy; the Phase 6 baseline is the colored
-// banner + explanatory sentence.
+// Full-width VDP banner under the title block. Returns null for clean titles.
+// Card-grid counterpart is the corner badge in VehicleCard.tsx.
 
 import type { Vehicle } from '../types/vehicle';
 

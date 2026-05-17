@@ -1,15 +1,7 @@
-// Right-column panel on the VDP. Renders the auction status pill, the headline
-// current bid, the floor indicator (state-only — never the reserve number, per
-// D007), an inline-validated bid input, Place Bid + Buy Now actions, and the
-// user's bid history for this lot. The panel is positioning-agnostic: the
-// VDP page wraps it in a sticky (desktop) or fixed-bottom (mobile) container.
-//
-// Bid button gating lives here (per D012): `validateBid` is pure math; the
-// auction-status check is presentation, so we short-circuit `handleSubmit`
-// when the lot isn't accepting bids and never call `validateBid` on a dead
-// lot. Inline preview validation runs on every keystroke so the user sees
-// the error before clicking, but the same `validateBid` is the source of
-// truth on submit — no second code path can drift.
+// VDP bid panel — status pill, headline bid, floor indicator (state-only,
+// never the reserve number, D007), inline-validated input, Place Bid / Buy
+// Now. Bid button gating uses `auctionStatus` (D012); pill uses `auctionPhase`
+// for the Closing display state (D021).
 
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
@@ -40,8 +32,6 @@ interface Props {
   vehicle: Vehicle;
 }
 
-// Mirrors VehicleCard so card and VDP read identically. Closing was promoted
-// to a first-class phase in Stretch B (D021).
 const PHASE_LABEL: Record<AuctionPhase, string> = {
   upcoming: 'Upcoming',
   active: 'Active',
@@ -63,7 +53,6 @@ const COUNTDOWN_LABEL: Partial<Record<AuctionPhase, string>> = {
   closing: 'Closes in',
 };
 
-// Newest first — buyers scanning "your bids" want the most recent at the top.
 function compareBidsDesc(a: { placedAt: string }, b: { placedAt: string }): number {
   return b.placedAt.localeCompare(a.placedAt);
 }
@@ -79,17 +68,10 @@ export default function BidPanel({ vehicle }: Props) {
   const bidsByVehicle = useBids();
   const placeBid = usePlaceBid();
 
-  // `auctionStatus` is the engine for the bid-gating decision (Closing is
-  // still Active under the hood — bids continue to land in the final 10m).
-  // `phase` is the display-layer label that promotes Active → Closing once
-  // the lot enters the closing window.
   const status = auctionStatus(vehicle.auction_start);
   const phase = auctionPhase(vehicle.auction_start);
   const isActive = status === 'active';
 
-  // Tick only while the lot has a future transition target. Ended lots get
-  // `null` from `nextTransitionIso` and short-circuit the interval via the
-  // hook's `enabled` arg.
   const transitionTarget = nextTransitionIso(vehicle.auction_start);
   const msRemaining = useCountdown(transitionTarget, { enabled: status !== 'ended' });
   const countdownLabel = COUNTDOWN_LABEL[phase];
@@ -100,11 +82,8 @@ export default function BidPanel({ vehicle }: Props) {
   const buyNow = vehicle.buy_now_price;
 
   const [input, setInput] = useState('');
-  // `submittedError` is the error from the last submit attempt (rendered after
-  // a bad click). `previewError` is recomputed as the user types so they see
-  // the rejection before clicking. They're separate so a fresh keystroke
-  // doesn't immediately wipe a "your bid was rejected" message — the preview
-  // takes over once the input changes.
+  // submittedError = last bad submit; previewError = inline as user types.
+  // Separated so a fresh keystroke doesn't immediately wipe the submit error.
   const [submittedError, setSubmittedError] = useState<string | null>(null);
 
   const trimmed = input.trim();
@@ -142,8 +121,6 @@ export default function BidPanel({ vehicle }: Props) {
 
   const sortedBids = useMemo(() => [...userBids].sort(compareBidsDesc), [userBids]);
 
-  // Same memoization shape as VehicleCard / CompPanel — keyed on the bid map
-  // so any bid commit (target or comp) reshapes the verdict in one tick.
   const band = useMemo(
     () => compPriceBand(vehicle, VEHICLES, bidsByVehicle),
     [vehicle, bidsByVehicle],

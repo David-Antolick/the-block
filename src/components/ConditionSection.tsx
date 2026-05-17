@@ -1,8 +1,5 @@
-// VDP condition section. Three parts: condition grade (1–5 scale, displayed
-// with a colored pill), narrative condition report (free text from the
-// dataset), and damage notes (zero-or-more bullets). Per M6 smoke check, an
-// empty damage_notes array must surface "No reported damage" rather than a
-// silent gap — visible-absence beats invisible-absence for a trust-thesis app.
+// VDP condition section. Empty damage_notes surfaces as "No reported damage"
+// — visible-absence beats invisible-absence for a trust-thesis app.
 
 import type { Vehicle } from '../types/vehicle';
 
@@ -10,10 +7,6 @@ interface Props {
   vehicle: Vehicle;
 }
 
-// Condition grade pill color — coarse buckets matching common wholesale
-// shorthand (4.0+ "Excellent", 3.0+ "Average", below "Rough"). The dataset is
-// integer-valued today but `condition_grade: number` allows decimals; keep the
-// buckets tolerant.
 function gradeBucket(grade: number): {
   label: string;
   className: string;
