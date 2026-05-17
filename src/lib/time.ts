@@ -1,23 +1,11 @@
-// Auction time helpers. Per D006, the dataset's `auction_start` timestamps
-// cluster around April 2026 — every lot would look "Ended" against today's
-// clock without normalization. We shift each timestamp by `now - DATASET_ANCHOR`
-// so the demo has a believable mix of upcoming / active / ended lots.
-//
-// Status labels use the same lowercase-union convention as `FloorStatus` in
-// bidding.ts so consumers can `switch` on a known set of strings.
+// Auction time helpers — see D006 for the full design (shift, persist, window).
+// The frozen-baseline trap caught in Phase 8 is L002.
 
 import { readJSON, writeJSON } from './storage';
 
-// Anchor at the center of the dataset's time-cluster (per D006). Anchored in
-// UTC explicitly (see D014) so the shift offset is the same in every timezone.
+// Center of the dataset's time cluster, UTC (D014 — bare ISOs must align).
 const DATASET_ANCHOR_MS = Date.UTC(2026, 3, 5, 12, 0, 0);
 
-// How long a persisted session anchor stays valid before we re-capture. 24h
-// is long enough that "come back after lunch / overnight" feels continuous
-// (countdowns pick up where they left off, lots that were Active stay
-// Active or roll into Closing → Ended on the real wall clock); short enough
-// that "come back next week" gets a fresh demo distribution rather than a
-// grid that's entirely Ended.
 const SESSION_ANCHOR_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_ANCHOR_KEY = 'session-anchor:v1';
 
@@ -25,16 +13,9 @@ interface PersistedSessionAnchor {
   capturedAt: number;
 }
 
-// The session-anchor baseline that the shift is computed against. Persisted
-// to localStorage so a full page reload doesn't reset the demo clock — a
-// countdown sitting at "Closes in 1m 30s" before reload should pick up close
-// to where it left off afterward, not jump back to its initial value because
-// the shift re-anchored to a fresh `Date.now()`. (L002: computing the
-// offset against a fresh `Date.now()` per-call defeats the shift — the
-// target moves forward in lockstep with the wall clock, so
-// `msUntil(shiftedStart) === parse(iso) - anchor` becomes constant and
-// `auctionStatus` / countdowns never advance. Tests pass `now` explicitly
-// so they exercise the override path, which is still per-call.)
+// Reads (or writes) the session-anchor baseline. L002: the shift offset must
+// be frozen — recomputing against fresh Date.now() per call collapses
+// msUntil(shiftedStart) to a constant and the countdown never ticks.
 function resolveSessionAnchor(): number {
   const now = Date.now();
   const stored = readJSON<PersistedSessionAnchor | null>(SESSION_ANCHOR_KEY, null);
@@ -53,46 +34,20 @@ function resolveSessionAnchor(): number {
 
 const SESSION_NOW_MS = resolveSessionAnchor();
 
-/**
- * How long after `auction_start` a lot is considered "Active". Tuned in
- * Phase 9 (D023) from the initial 6h to 24h after the mix sanity-check —
- * the dataset clusters `auction_start` values in ~6h slots with gaps, and
- * the 6h window only caught 9 Active lots at the session anchor (below
- * PLAN.md's 10–30 target). 24h reaches ~29 Active. The Closing pill
- * (`CLOSING_WINDOW_MS`, below) keeps the urgency-tail signal correct
- * regardless of the outer window, so the wider window doesn't blunt the
- * faithful-state-machine stretch.
- */
+/** How long a lot is "Active" after its shifted start. 24h per D006. */
 export const ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Tail of the Active window during which the lot is re-labelled "Closing"
- * (Stretch B / D021). Mirrors OPENLANE's lifecycle vocabulary (D007) — the
- * last few minutes are visibly distinct from the rest of the Active window.
- */
+/** Tail of the Active window labeled "Closing" (D021). */
 export const CLOSING_WINDOW_MS = 10 * 60 * 1000;
 
 export type AuctionStatus = 'upcoming' | 'active' | 'ended';
-/**
- * `AuctionStatus` widened with the Closing sub-state. The state machine
- * progression is `upcoming → active → closing → ended`. `auctionStatus`
- * stays on the three-state union (it's the engine for filter/sort math and
- * shouldn't get a fourth bucket that changes by the minute); `auctionPhase`
- * is the consumer-facing variant that adds Closing as a display state.
- */
+/** AuctionStatus widened with the Closing display sub-state (D021). */
 export type AuctionPhase = AuctionStatus | 'closing';
 
-// Matches a trailing `Z` or a numeric `+HH:MM` / `-HHMM` offset — anything
-// the ES spec recognizes as a timezone designator on an ISO 8601 string.
+// Trailing `Z` or numeric offset — any ES-spec timezone designator.
 const HAS_TIMEZONE = /(Z|[+-]\d{2}:?\d{2})$/;
 
-/**
- * Parse a dataset ISO into epoch ms, treating bare (unzoned) strings as UTC
- * so they align with `DATASET_ANCHOR_MS` (D014). Dataset values like
- * `"2026-04-05T19:00:00"` would otherwise parse as local time per the ES
- * spec, making the shift output and `auctionStatus` buckets vary by viewer
- * timezone. Already-zoned inputs (Z-suffixed or `±HH:MM`) pass through.
- */
+// Bare ISOs as UTC (D014).
 function parseDatasetIso(iso: string): number {
   return new Date(HAS_TIMEZONE.test(iso) ? iso : iso + 'Z').getTime();
 }
@@ -101,31 +56,19 @@ function nowMs(now?: Date): number {
   return (now ?? new Date()).getTime();
 }
 
-// Production callers (no explicit `now`) use the session baseline so the
-// shift target is stable across renders; tests that pass `now` get the
-// per-call behavior they wrote against.
+// Production: frozen SESSION_NOW_MS. Tests pass `now` for per-call override.
 function shiftBaselineMs(now?: Date): number {
   return now ? now.getTime() : SESSION_NOW_MS;
 }
 
-/**
- * Shift a dataset `auction_start` ISO string into the current time frame.
- * The offset `(baseline - DATASET_ANCHOR)` is the same for every timestamp,
- * so relative ordering between lots is preserved exactly. In production the
- * baseline is frozen at module load (SESSION_NOW_MS) so the shifted target
- * is a fixed wall-clock moment that countdowns can tick toward.
- */
+/** Shift a dataset `auction_start` into the current time frame. */
 export function shiftAuctionStart(iso: string, now?: Date): string {
   const offset = shiftBaselineMs(now) - DATASET_ANCHOR_MS;
   const shifted = parseDatasetIso(iso) + offset;
   return new Date(shifted).toISOString();
 }
 
-/**
- * Bucket a dataset `auction_start` into one of three demo-visible states.
- * Boundaries: a lot at exactly its (shifted) start time is 'active'; a lot
- * at exactly `start + ACTIVE_WINDOW_MS` is 'ended'.
- */
+/** Three-state bucket. Boundaries: inclusive at start, exclusive at end. */
 export function auctionStatus(iso: string, now?: Date): AuctionStatus {
   const t = nowMs(now);
   const shiftedStart = parseDatasetIso(shiftAuctionStart(iso, now));
@@ -134,24 +77,12 @@ export function auctionStatus(iso: string, now?: Date): AuctionStatus {
   return 'ended';
 }
 
-/**
- * Milliseconds from `now` to the given ISO timestamp. Positive when `iso`
- * is in the future, negative when in the past. Generic helper — callers can
- * pass any target time (e.g. a shifted start, or `shiftedStart + window` for
- * "ms until close" countdowns). Bare ISOs are treated as UTC (D014).
- */
+/** Ms from `now` to `iso`. Positive = future. Bare ISOs are UTC (D014). */
 export function msUntil(iso: string, now?: Date): number {
   return parseDatasetIso(iso) - nowMs(now);
 }
 
-/**
- * The shifted ISO timestamp at which the lot transitions to its next state
- * (Upcoming → Active at shifted start; Active → Ended at shifted start +
- * window). Returns `null` for lots that have already Ended.
- *
- * Single source of truth for the "what should the countdown count toward?"
- * question — `useCountdown` and `auctionPhase` both ride on this.
- */
+/** Shifted ISO at which the lot next transitions. `null` for Ended. */
 export function nextTransitionIso(iso: string, now?: Date): string | null {
   const shiftedStartIso = shiftAuctionStart(iso, now);
   const status = auctionStatus(iso, now);
@@ -162,12 +93,7 @@ export function nextTransitionIso(iso: string, now?: Date): string | null {
   return null;
 }
 
-/**
- * Display-layer phase that promotes an Active lot to "Closing" once its
- * remaining window dips below `CLOSING_WINDOW_MS`. Pure derivation from
- * `auctionStatus` + the time-to-end target; callers don't need to reach into
- * the window constants themselves.
- */
+/** Display-layer phase — promotes Active → Closing in the last CLOSING_WINDOW_MS. */
 export function auctionPhase(iso: string, now?: Date): AuctionPhase {
   const status = auctionStatus(iso, now);
   if (status !== 'active') return status;
@@ -177,12 +103,8 @@ export function auctionPhase(iso: string, now?: Date): AuctionPhase {
 }
 
 /**
- * Format a ms duration as a coarse countdown. Three tiers so the string
- * fits the time scale without dragging seconds into a multi-day countdown:
- *   ≥ 1d → "2d 4h 12m"   (no seconds — too noisy at this scale)
- *   ≥ 1h → "4h 12m"      (minute resolution is plenty when an hour out)
- *   else → "3m 42s"      (seconds visible — buyers care in the last minutes)
- * Negative / zero inputs return "0s" so a stale tick never shows nonsense.
+ * Tiered countdown format. ≥1d → "Nd Hh Mm"; ≥1h → "Hh Mm"; else "Mm SSs".
+ * Non-positive inputs render "0s" so a stale tick never shows nonsense.
  */
 export function formatCountdown(ms: number): string {
   if (ms <= 0) return '0s';

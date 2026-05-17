@@ -10,8 +10,8 @@ import {
   shiftAuctionStart,
 } from './time';
 
-// Anchor matches DATASET_ANCHOR_MS in time.ts. Hardcoded here so the test
-// would catch an accidental anchor edit on the source side.
+// Mirrors DATASET_ANCHOR_MS in time.ts — duplicated here to catch an
+// accidental anchor edit on the source side.
 const ANCHOR = '2026-04-05T12:00:00.000Z';
 
 describe('shiftAuctionStart', () => {
@@ -67,12 +67,9 @@ describe('msUntil', () => {
   });
 });
 
-// Dataset timestamps are unzoned (e.g. "2026-04-05T19:00:00"). They must
-// parse as UTC to align with DATASET_ANCHOR_MS — if they were left to
-// default-parse as local, shift output and status buckets would drift by the
-// viewer's timezone offset. This block only exercises the bug under a
-// non-UTC timezone; `vite.config.ts` pins `TZ=America/Toronto` for the
-// vitest process so this regression actually fires on UTC CI runners too.
+// D014 regression: unzoned dataset ISOs must parse as UTC. The vitest TZ
+// pin in vite.config.ts ensures the parity assertions actually exercise
+// the asymmetry on UTC CI runners.
 describe('parseDatasetIso convention (D014)', () => {
   const now = new Date('2026-05-16T12:00:00Z');
   const bare = '2026-04-05T19:00:00';
@@ -173,14 +170,10 @@ describe('formatCountdown', () => {
   });
 });
 
-// Regression block for the Phase 8 countdown bug: `shiftAuctionStart` used
-// to compute its offset against a fresh `Date.now()` per call, which made
-// the shifted target drift forward in lockstep with the wall clock — every
-// `msUntil(shiftedStart)` came back as a constant and the VDP countdown
-// looked frozen. The fix freezes the shift baseline at module load
-// (SESSION_NOW_MS); tests still pass `now` explicitly and exercise the
-// override path. These tests exercise the *no-`now`* path, since the bug
-// only manifested there.
+// L002 regression: countdown was frozen because shiftAuctionStart computed
+// its offset against a fresh Date.now() per call. The fix freezes the
+// shift baseline at module load; this block exercises the *no-`now`* path
+// since the bug only manifested there.
 describe('shift baseline is frozen at module load (countdown regression)', () => {
   it('shiftAuctionStart() with no `now` is stable as the wall clock advances', () => {
     const iso = '2026-04-05T13:00:00Z';

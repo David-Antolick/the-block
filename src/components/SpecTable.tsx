@@ -1,8 +1,5 @@
-// VDP spec table. Renders the static vehicle attributes that don't change
-// during the auction — VIN, drivetrain, engine, etc. Built as a `<dl>` (rather
-// than a `<table>`) because each spec is a single labeled value, not a row in
-// tabular data, and screen readers announce dt/dd pairs without column-header
-// overhead. Two-column on desktop; single-column on mobile.
+// VDP spec table. `<dl>` rather than `<table>` — each row is a labeled value,
+// not tabular data, and dt/dd announce cleanly without column-header overhead.
 
 import type { Vehicle } from '../types/vehicle';
 import { formatOdometer } from '../lib/format';

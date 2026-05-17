@@ -1,16 +1,5 @@
-// Phase 9a coverage for the inventory-card invariants the trust thesis hangs
-// on (CLAUDE.md):
-//   1. Salvage title brand surfaces a prominent corner badge with role="note".
-//      The card-grid scan is the first surface a buyer hits — losing the
-//      visible salvage signal would defeat the whole "title-brand prominence"
-//      half of the thesis (D008).
-//   2. Headline current bid routes through `formatCurrency()` rather than an
-//      inline `${value}` interpolation. Asserts the locale/currency choke
-//      point (CLAUDE.md's centralized-formatting invariant) hasn't been
-//      bypassed for the most-rendered price on the site.
-//   3. User-placed bids stack on top of dataset `current_bid` via
-//      `displayedCurrentBid` — confirms the card listens to BidContext, not
-//      just the static seed.
+// VehicleCard: title-brand prominence, formatCurrency invariant, BidContext
+// subscription. Anchors the trust thesis (D008).
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { act } from 'react';
@@ -87,8 +76,6 @@ describe('VehicleCard — title-brand prominence', () => {
 
   it('renders no title-brand badge for clean lots', () => {
     renderCard(makeVehicle({ title_status: 'clean' }));
-    // Phase pill also uses role="note" via aria-label nowhere; querying by the
-    // brand-specific accessible name is the precise check.
     expect(screen.queryByRole('note', { name: /(salvage|rebuilt) title/i })).toBeNull();
   });
 });
@@ -97,9 +84,6 @@ describe('VehicleCard — currency invariant', () => {
   it('headline current bid is rendered via formatCurrency (single choke-point)', () => {
     const vehicle = makeVehicle({ current_bid: 21_000 });
     renderCard(vehicle);
-    // Asserting the *exact* output of formatCurrency (locale-formatted CAD)
-    // catches any future inline ${value} interpolation that drops the locale
-    // or sneaks a stray "$" into the card.
     expect(screen.getByText(formatCurrency(21_000))).toBeInTheDocument();
   });
 
@@ -129,12 +113,10 @@ describe('VehicleCard — currency invariant', () => {
       </MemoryRouter>,
     );
 
-    // Pre-bid: card shows the dataset seed.
     expect(screen.getByText(formatCurrency(15_000))).toBeInTheDocument();
     act(() => {
       screen.getByText('seed-bid').click();
     });
-    // Post-bid: card listens to BidContext and headline reflects the user bid.
     expect(screen.getByText(formatCurrency(17_500))).toBeInTheDocument();
     expect(screen.queryByText(formatCurrency(15_000))).toBeNull();
   });

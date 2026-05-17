@@ -1,8 +1,3 @@
-// App shell: BrowserRouter + BidProvider + a minimal header + routes.
-// React Router v7 (I6). The BidProvider wraps the router so any future route
-// can call the bid hooks; the storage hydration in the provider runs once on
-// mount, before any page consumes it.
-
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { BidProvider } from './state/BidProvider';
 import Inventory from './pages/Inventory';

@@ -1,12 +1,5 @@
-// VDP comp panel — companion to the SmartPriceBadge that surfaces *which*
-// comps fed the verdict and what their current bids are. Lets the buyer
-// click through to any comp's VDP to verify the comparison for themselves.
-//
-// Memoization is intentional (PLAN.md Phase 7): `compPriceBand` walks the
-// 200-lot pool, and the panel re-renders whenever the bid map changes. The
-// memo key is `bidsByVehicle` itself so any user bid on the target *or* on
-// a comp invalidates the cached band — `findComps` doesn't depend on bids,
-// but the band's low/median/high do, and consistency beats a tighter key.
+// VDP comp panel — shows which comps fed the SmartPriceBadge's verdict.
+// Memo key is `bidsByVehicle` so any bid (target or comp) reshapes the band.
 
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';

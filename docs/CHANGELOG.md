@@ -4,31 +4,40 @@ All notable changes to "The Block." Reverse chronological — most recent at top
 
 ---
 
-## [2026-05-16] Phase 9 — Sanity sweep, component coverage, Active-window retune (`test/phase-9-bug-bash-component-coverage`)
-
-Phase 9 from `docs/PLAN.md`: smoke the build top-to-bottom, fill the two component-test gaps the prior phases deferred (SmartPriceBadge + VehicleCard), and run the Active-window mix sanity check the plan called out as a Phase 9 deliverable. Net code change is small — one constant in `time.ts` and a test-fixture safety bump — but two test files and three doc entries land here, so the phase reads as "audit + fill in gaps" rather than "rewrite."
-
-### Audit findings (no code change required)
-- **Bidding validator** (`src/lib/bidding.ts`) — 15-case test surface covers all rejection reasons including D011's inclusive buy-now ceiling. Verified the order of `validateBid` checks (non-finite → non-integer → non-positive → below-min → above-buy-now) produces the most informative error per input. Dataset audit confirms no lot has `buy_now_price < current_bid + BID_INCREMENT`, so the theoretical "Buy Now button rejected as below-min" edge can't fire against the curated data.
-- **Time helpers** (`src/lib/time.ts`) — `auctionStatus` / `auctionPhase` boundaries (inclusive at start, exclusive at end, Closing inclusive at threshold) are correct and covered. L002 regression block guards the frozen-baseline fix under `vi.useFakeTimers`.
-- **Currency hygiene** — grepped the source for inline `${value}` patterns in JSX; every template-literal hit is `className` / `key` / `aria-label`, none is a price interpolation. CLAUDE.md's centralized-formatting invariant holds.
-- **Console / TODO / `any`** — zero `console.*` calls in source; zero `TODO`/`FIXME`; zero `any` types outside of comments.
-- **Dataset distribution** — 200 vehicles, 39 with Buy Now, 14 salvage, 16 rebuilt. `current_bid` and `starting_bid` are uniformly `% 100 === 0`, so no Buy-Now math edges. `bid_count === 0` for 112 lots → `displayedCurrentBid` headlines `current_bid` for those without divide-by-zero worries (dataset never seeds `current_bid = 0`).
+## [2026-05-16] Phase 9 (cont'd) — Doc/notes consolidation pass
 
 ### Changed
-- **`src/lib/time.ts`** — `ACTIVE_WINDOW_MS` bumped from `6h` to `24h`. At the session anchor, the 6h window produced **9 Active / 51 Upcoming / 140 Ended** — below PLAN.md's 10–30 Active target. The dataset clusters `auction_start` values in ~6h slots with a 6h gap immediately before the anchor (histogram from the audit: 8 / 0 / 9 / 14 lots in the four 6h buckets back from anchor), so widening to 12h was vacuous; 18h reached 14; **24h reached 29** Active lots, mid-target. The Closing pill (`CLOSING_WINDOW_MS = 10m`) is unchanged, so the urgency-tail signal still reads correctly. See **D023**.
-- **`src/components/filter-rail-state.test.ts`** — Test-fixture ISOs widened from anchor±24h to anchor±48h. With the new 24h window, the previous −24h fixture sat exactly on the active-end boundary (passing only because `Date.now() > SESSION_NOW_MS` by a few ms at test-run time); widening to 48h makes the test robust against further window tweaks.
+- **`docs/DECISIONS.md`** — 23 → 18 entries. D006 absorbs former D022 and D023; D013 absorbs D015; D016 absorbs D019. D009 removed. Surviving entries tightened to a paragraph each. Numbers preserved so prior commits' cross-links resolve.
+- **`src/**`** — file-header comments trimmed across the tree. Kept comments are non-obvious whys only (L002 frozen-baseline on `resolveSessionAnchor`, D016 ref-mirror on `placeBid`, D020 drop-zero-priced-comps on `compPriceBand`, derived-on-read pattern in `useCountdown` / `ImageGallery`).
+- **`docs/CHANGELOG.md`**, **`CLAUDE.md`**, **`docs/LESSONS.md`** — cross-link updates after the DECISIONS merges; Phase 9 audit + Phase 8.3 entries density-matched to earlier entries.
+- Test-file headers trimmed to 1–3 line summaries.
+
+### Verified
+- `npm run lint` clean. `npm test -- --run` — 104 passed (unchanged). `npm run build` zero TS errors. Bundle 507 kB / 116 kB gzip — unchanged.
+
+---
+
+## [2026-05-16] Phase 9 — Sanity sweep, component coverage, Active-window retune (`test/phase-9-bug-bash-component-coverage`)
+
+Phase 9 from `docs/PLAN.md` — smoke the build top to bottom, fill the deferred component-test gaps (SmartPriceBadge + VehicleCard), and run the Active-window mix sanity check.
+
+### Changed
+- **`src/lib/time.ts`** — `ACTIVE_WINDOW_MS` 6h → 24h. The 6h window produced 9 Active / 51 Upcoming / 140 Ended at the session anchor — below PLAN.md's 10–30 target. Dataset clusters `auction_start` in ~6h slots with a 6h gap right before the anchor; 12h was vacuous, 24h reached 29 Active. Closing pill (10m) unchanged. See D023.
+- **`src/components/filter-rail-state.test.ts`** — Fixture ISOs widened from anchor±24h to anchor±48h so test bucketing isn't on the new window boundary.
 
 ### Added — component test coverage (Phase 9a)
-- **`src/components/SmartPriceBadge.test.tsx`** — 7 cases over three concerns. (a) `unknown` verdicts and `null` bands render nothing (preserves the "no signal, no noise" contract). (b) Verdict → color mapping for `below` / `fair` / `above` asserts the Tailwind ring class so a refactor of `VERDICT_CLASS` can't silently swap colors and pass tests. (c) Interactive badges are tab-reachable with `aria-describedby` linking to a `role="tooltip"` element carrying the band explanation; decorative variant (inside a card link) drops the tab stop.
-- **`src/components/VehicleCard.test.tsx`** — 5 cases over two trust-thesis invariants. (a) Salvage and rebuilt title brands surface a corner badge with the right `role="note"` accessible name; clean titles render no brand badge. (b) Headline current bid is rendered via `formatCurrency()` (asserts the exact locale-formatted CAD output to catch any future inline `${value}` slip) and reflects `displayedCurrentBid` — a user-placed bid commits through the harness's `usePlaceBid` and the card re-renders with the new headline (verifies the card subscribes to BidContext, not just the dataset seed).
+- **`src/components/SmartPriceBadge.test.tsx`** — 7 cases: render rules (`unknown` / `null` → empty), verdict → color mapping (asserted on Tailwind ring class), tooltip a11y (interactive variant tab-reachable + `role="tooltip"` reachable via `aria-describedby`; decorative variant drops tab stop).
+- **`src/components/VehicleCard.test.tsx`** — 5 cases: salvage / rebuilt title-brand badges with correct `role="note"` names; clean lots get no badge; headline via `formatCurrency()`; bid stacks through `displayedCurrentBid` after a user bid commits.
 
-### Cuts (logged to `docs/CUTS.md`)
-- **SmartPriceBadge tooltip on card grid is hover-only** — keyboard users navigating the inventory grid don't see the comp band explanation on focus. The `aria-label` carries the full description so screen readers still get it, and the card link → VDP → CompPanel path gives the same data in full detail. Adding a focus surface to the decorative card-grid variant would mean a second tab stop per card (≈200 extra) for a feature that's already accessible through the link.
+### Audit findings (no code change required)
+Bidding validator: 15-case surface covers all rejection reasons including D011's inclusive ceiling; dataset confirms no `buy_now < current+BID_INCREMENT` lots. Time boundaries (inclusive at start, exclusive at end, Closing inclusive at threshold) correct + tested. Zero inline `${currency}` in JSX, zero `console.*`, zero `TODO`/`FIXME`, zero `any` outside comments.
+
+### Cuts (added to `docs/CUTS.md`)
+- **SmartPriceBadge tooltip on the card grid is hover-only.** Decorative-variant pill drops its tab stop so the parent card link owns keyboard focus; full comp data lives one click away on the VDP CompPanel, and the badge `aria-label` carries the description for SR users. Adding a focus surface here would mean ~200 extra tab stops on the grid.
 
 ### Verified
 - `npm run lint` — clean.
-- `npm test -- --run` — **104 passed** (was 92; +12 from the two new component test files; existing 92 unchanged in count and behavior after the window bump and fixture-offset widening).
+- `npm test -- --run` — **104 passed** (was 92; +12 from the two new component test files).
 - `npm run build` — zero TS errors. Bundle 507 kB JS / 116 kB gzip — unchanged.
 
 ### Decisions
@@ -38,19 +47,14 @@ Phase 9 from `docs/PLAN.md`: smoke the build top-to-bottom, fill the two compone
 
 ## [2026-05-16] Phase 8.3 — Persist the session anchor across reloads (`feature/state-machine`)
 
-Follow-on to **L002**: freezing the shift baseline made countdowns tick during a session, but every full page reload re-anchored against a fresh `Date.now()` and snapped the countdown back to its initial value. **D022** captures the persistence design call (storage tier, TTL, validation depth, eager-vs-lazy init).
+Follow-on to **L002**: freezing the shift baseline made countdowns tick during a session, but every full page reload re-anchored to a fresh `Date.now()` and snapped the countdown back. **D022** covers the persistence design — storage tier, TTL, validation depth, eager module-load init.
 
 ### Changed
-- **`src/lib/time.ts`** — `SESSION_NOW_MS` now resolves through `resolveSessionAnchor()`, which reads `{capturedAt: number}` from `localStorage` under `openlane-block:session-anchor:v1` via the existing `readJSON` helper. Reuses the stored value when (`now - storedAt) < 24h` and `storedAt ≤ now`; otherwise writes a fresh anchor and returns it. Defensive shape check (`typeof capturedAt === 'number'`, `Number.isFinite`, no future-dated values) so schema drift or corrupted storage degrades to a re-anchor rather than nonsense countdowns. Module-load side effect is intentional — every consumer reads `SESSION_NOW_MS` synchronously and the `storage.ts` `getStorage()` guard already no-ops in non-browser environments.
+- **`src/lib/time.ts`** — `SESSION_NOW_MS` now resolves through `resolveSessionAnchor()`, reading `{capturedAt: number}` from `localStorage` under `openlane-block:session-anchor:v1`. Reuses the stored value when `(now − storedAt) < 24h` and `storedAt ≤ now`; otherwise writes a fresh anchor. Defensive shape check (`typeof capturedAt === 'number'`, `Number.isFinite`, no future-dated values) so schema drift or corrupted storage degrades to a re-anchor.
 
 ### Verified
-- `npm run lint` — clean.
-- `npm test -- --run` — 92 passed (no test surface change; the regression block in `time.test.ts` exercises the no-`now` path and would catch a re-anchoring drift if persistence broke it).
-- `npm run build` — zero TS errors. Bundle 507 kB JS / 116 kB gzip (delta within noise — one small function added).
-- Manual smoke: opened a VDP showing "Closes in 1m 30s", let it tick to ~1m 10s, full reload — countdown picked up at "Closes in 1m 09s" (read jitter only). Cleared `openlane-block:session-anchor:v1` from DevTools, reloaded — countdown reset to its fresh-anchor value as expected.
-
-### Decisions
-- **D022** — Persist the session anchor to `localStorage` under `session-anchor:v1` with a 24h TTL. `localStorage` over `sessionStorage` (cross-tab + survives close), 24h specifically (long enough for "back after lunch," short enough that "back next week" gets a fresh distribution), defensive validation on read, eager module-load init.
+- `npm run lint` — clean. `npm test -- --run` — 92 passed. `npm run build` — zero TS errors.
+- Manual smoke: VDP at "Closes in 1m 30s" → reload → resumes at ~1m 09s (read jitter only). Clearing the localStorage key re-anchors as expected.
 
 ---
 

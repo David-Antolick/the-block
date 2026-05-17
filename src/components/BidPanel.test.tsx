@@ -1,15 +1,10 @@
-// Component coverage for the three Phase 8 (Stretch B) surfaces that landed
-// on BidPanel without unit coverage at the time:
-//   1. Pill flip from Active → Closing at the CLOSING_WINDOW_MS boundary
-//   2. Countdown label + tiered format ("Opens in 1h 5m", "Closes in 3m 42s")
-//   3. `aria-live="polite"` only when the lot is in the Closing window
+// Phase 8 (Stretch B) BidPanel surfaces: pill flip at the Closing boundary,
+// countdown label + tiered format, aria-live polite only when Closing.
 //
-// Approach: fake timers + a `vi.setSystemTime` baseline so the wall-clock
-// position is deterministic, plus an `auction_start` constructor that
-// inverts the production shift so a vehicle ends up at a chosen wall-clock
-// moment regardless of what `SESSION_NOW_MS` happened to capture at module
-// load. The inversion probes the shift offset via `shiftAuctionStart(anchor)`
-// — that round-trip is exactly `SESSION_NOW_MS`, no need to export it.
+// Fake timers + vi.setSystemTime + an inverted-shift helper give a
+// deterministic wall-clock that's independent of when time.ts captured
+// SESSION_NOW_MS. The inversion probes the offset via shiftAuctionStart
+// (anchor round-trips to SESSION_NOW_MS exactly).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act } from 'react';
@@ -20,16 +15,14 @@ import { ACTIVE_WINDOW_MS, shiftAuctionStart } from '../lib/time';
 import BidPanel from './BidPanel';
 
 const DATASET_ANCHOR_MS = Date.UTC(2026, 3, 5, 12, 0, 0);
-// `shiftAuctionStart(anchor)` round-trips to `anchor + (SESSION_NOW_MS -
-// anchor)` = SESSION_NOW_MS exactly. Probing this way keeps the test
-// independent of when the time.ts module happened to load.
 const SESSION_NOW_MS = new Date(
   shiftAuctionStart(new Date(DATASET_ANCHOR_MS).toISOString()),
 ).getTime();
 const SHIFT_OFFSET = SESSION_NOW_MS - DATASET_ANCHOR_MS;
 
+// Inverts the production shift so a fixture vehicle's shifted start lands
+// at a chosen wall-clock moment.
 function isoForShiftedStart(shiftedStartMs: number): string {
-  // Inverts the production shift: parse(iso) = shiftedStartMs - SHIFT_OFFSET.
   return new Date(shiftedStartMs - SHIFT_OFFSET).toISOString();
 }
 
@@ -104,16 +97,13 @@ describe('BidPanel — Phase 8 surfaces', () => {
   });
 
   it('flips the pill from Active to Closing when the remaining window crosses the threshold', () => {
-    // 11 minutes remaining — 1 minute past the 10-minute closing threshold.
+    // 11 minutes remaining — 1 minute past the 10-minute Closing threshold.
     const vehicle = makeActiveVehicle(11 * 60_000, { id: 'flip-vehicle' });
     renderPanel(vehicle);
 
     expect(screen.getByText('Active')).toBeInTheDocument();
     expect(screen.queryByText('Closing')).not.toBeInTheDocument();
 
-    // Advance the wall clock by 61s (one second past the boundary). The
-    // countdown's interval callback fires, triggering re-renders, and
-    // `auctionPhase` recomputes against the mocked Date.now().
     act(() => {
       vi.advanceTimersByTime(61_000);
     });
@@ -123,27 +113,24 @@ describe('BidPanel — Phase 8 surfaces', () => {
   });
 
   it('renders "Opens in" / "Closes in" with the tiered format', () => {
-    // ≥1h horizon drops seconds → "1h 5m".
+    // ≥1h drops seconds.
     const upcoming = makeUpcomingVehicle(65 * 60_000, { id: 'opens-vehicle' });
     const { unmount } = renderPanel(upcoming);
     expect(screen.getByText('Opens in 1h 5m')).toBeInTheDocument();
     unmount();
 
-    // <1h horizon shows zero-padded seconds → "3m 42s".
+    // <1h shows zero-padded seconds.
     const closing = makeActiveVehicle(3 * 60_000 + 42_000, { id: 'closes-vehicle' });
     renderPanel(closing);
     expect(screen.getByText('Closes in 3m 42s')).toBeInTheDocument();
   });
 
   it('aria-live is polite only when the lot is in the Closing window', () => {
-    // Active but not closing — 30m remaining is well above the threshold.
     const active = makeActiveVehicle(30 * 60_000, { id: 'active-aria' });
     const { unmount } = renderPanel(active);
     expect(screen.getByText(/^Closes in /)).toHaveAttribute('aria-live', 'off');
     unmount();
 
-    // Inside the closing window — 5m remaining. Same "Closes in" label, but
-    // the announcement intent flips.
     const closing = makeActiveVehicle(5 * 60_000, { id: 'closing-aria' });
     renderPanel(closing);
     expect(screen.getByText(/^Closes in /)).toHaveAttribute('aria-live', 'polite');

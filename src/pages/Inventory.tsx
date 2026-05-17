@@ -1,11 +1,5 @@
-// Inventory grid — desktop sidebar + grid, mobile filters-button + grid.
-// Owns filter state (component-local per I4 — no URL params) and sort state.
-// Subscribes to the full bids map (`useBids`) so the price-range filter and
-// "Current bid" sort respect user-placed bids, not just the dataset seed.
-//
-// Default filters (`DEFAULT_FILTER_STATE`) hide salvage and hide ended lots —
-// the trust thesis is reflected in what loads first. Both are surfaced as
-// chips users can clear.
+// Inventory grid page. Owns filter + sort + mobile-drawer state (D018).
+// Default filters hide salvage + ended (D017); both surface as removable chips.
 
 import { useMemo, useState } from 'react';
 import VehicleCard from '../components/VehicleCard';
@@ -55,10 +49,8 @@ function sortVehicles(
 
   switch (key) {
     case 'ending_soonest': {
-      // Lots still closeable (close > now) sort ascending by close. Lots
-      // already past their close go to the bottom, ordered most-recently-
-      // ended first — so an opted-in "show ended" view leads with the
-      // freshest dead lots, not stale ones.
+      // Closeable lots ascend by close; already-ended lots fall to the bottom
+      // ordered most-recently-ended first.
       const now = Date.now();
       return copy.sort((a, b) => {
         const ca = closeTimeMs(a);
@@ -97,12 +89,8 @@ export default function Inventory() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const bidsByVehicle = useBids();
 
-  // Comp-band table only when the Smart Price filter needs it for every
-  // vehicle. With the filter OFF (default), applyFilters skips the band
-  // and each rendered card computes its own — ~50 lookups, cheaper than
-  // eagerly walking the full 200. With the filter ON, the precompute
-  // amortizes across applyFilters + the card grid, eliminating the
-  // previous double-pass.
+  // Precompute the band map only when the Smart Price filter needs it for
+  // every vehicle — otherwise each rendered card computes its own.
   const smartFilterActive = filters.smartPriceVerdicts.length > 0;
   const bandsById = useMemo(() => {
     if (!smartFilterActive) return null;
